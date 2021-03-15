@@ -1,0 +1,4 @@
+sample_list: "config/samples.csv"
+cutadapt:
+  R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
+  R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
