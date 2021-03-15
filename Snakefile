@@ -5,6 +5,8 @@ container: "docker://continuumio/miniconda3:4.9.2"
 configfile: "config/config.yml"
 samples = read_samples(config["sample_list"])
 
+localrules: all, link, multiqc
+
 rule all:
     "Main rule for workflow"
     input:
