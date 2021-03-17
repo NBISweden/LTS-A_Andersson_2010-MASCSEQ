@@ -1,0 +1,41 @@
+$schema: "http://json-schema.org/draft-06/schema#"
+
+description: snakemake configuration file
+
+type: object
+
+properties:
+  sample_list:
+    type: string
+    description: path to a sample sheet
+    default: "config/samples.csv"
+  cutadapt:
+    type: object
+    default:
+      R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
+      R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
+    properties:
+      R1_adapter:
+        type: string
+        description: Fwd adapter for cutadapt
+      R2_adapter:
+        type: string
+        description: Rev adapter for cutadapt
+  sortmerna:
+    type: object
+    default:
+      dbs:
+        - "rfam-5s-database-id98"
+        - "rfam-5.8s-database-id98"
+        - "silva-arc-16s-id95"
+        - "silva-arc-23s-id98"
+        - "silva-bac-16s-id90"
+        - "silva-bac-23s-id98"
+        - "silva-euk-18s-id95"
+        - "silva-euk-28s-id98"
+    properties:
+      dbs:
+        type: array
+        description: databases to use for rRNA identification
+        items:
+          type: string
