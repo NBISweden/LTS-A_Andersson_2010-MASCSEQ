@@ -12,7 +12,10 @@ localrules: all, link, download_rna, multiqc
 rule all:
     "Main rule for workflow"
     input:
-        "results/multiqc/multiqc.html"
+        "results/multiqc/multiqc.html",
+        expand("results/{assembler}/{sample}/done",
+            assembler = ["trinity","transabyss"],
+            sample = samples.keys())
 
 rule link:
     input:
@@ -29,8 +32,8 @@ rule link:
 
 rule cutadapt:
     input:
-        R1 = "results/intermediate/{sample}_R1.fastq.gz",
-        R2 = "results/intermediate/{sample}_R2.fastq.gz"
+        R1 = ancient("results/intermediate/{sample}_R1.fastq.gz"),
+        R2 = ancient("results/intermediate/{sample}_R2.fastq.gz")
     output:
         R1 = "results/cutadapt/{sample}_R1.fastq.gz",
         R2 = "results/cutadapt/{sample}_R2.fastq.gz"
@@ -143,4 +146,32 @@ rule multiqc:
     shell:
         """
         multiqc -o {params.outdir} -n {params.base} {input} > {log} 2>&1
+        """
+
+rule transabyss:
+    input:
+        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
+    output:
+        touch("results/transabyss/{sample}/done")
+    conda:
+        "envs/transabyss.yml"
+    threads: 10
+    shell:
+        """
+        
+        """
+
+rule trinity:
+    input:
+        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
+    output:
+        touch("results/trinity/{sample}/done")
+    conda:
+        "envs/trinity.yml"
+    threads: 10
+    shell:
+        """
+
         """
