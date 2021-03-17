@@ -1,8 +1,10 @@
 import os
+from snakemake.utils import validate
 from src.common import read_samples
 
 container: "docker://continuumio/miniconda3:4.9.2"
 configfile: "config/config.yml"
+validate(config, schema="config/config_schema.yml", set_default=True)
 samples = read_samples(config["sample_list"])
 
 localrules: all, link, download_rna, multiqc
@@ -103,13 +105,13 @@ rule sortmerna:
 
 rule fastqc:
     input:
-        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
+        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz"
     output:
-        R1 = "results/fastqc/{sample}_R1_fastqc.zip",
-        R2 = "results/fastqc/{sample}_R2_fastqc.zip"
+        R1 = "results/fastqc/{sample}.{RNA}_fwd_fastqc.zip",
+        R2 = "results/fastqc/{sample}.{RNA}_rev_fastqc.zip"
     log:
-        "results/logs/fastqc/{sample}.log"
+        "results/logs/fastqc/{sample}.{RNA}.log"
     params:
         dir = lambda wildcards, output: os.path.dirname(output.R1)
     resources:
@@ -127,8 +129,8 @@ rule multiqc:
             sample=samples.keys()),
         expand("results/sortmerna/{sample}.log",
             sample=samples.keys()),
-        expand("results/fastqc/{sample}_R{i}_fastqc.zip",
-            sample=samples.keys(), i=[1,2])
+        expand("results/fastqc/{sample}.{RNA}_{R}_fastqc.zip",
+            sample=samples.keys(), R=["rev","fwd"], RNA=["mRNA","rRNA"])
     output:
         "results/multiqc/multiqc.html"
     log:
