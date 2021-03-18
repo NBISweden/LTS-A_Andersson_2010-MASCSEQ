@@ -11,6 +11,8 @@ WORKDIR /project
 # Set tmpdir
 ENV TMPDIR="/scratch"
 
+RUN mkdir $TMPDIR
+
 # Install necessary tools
 RUN apt-get update && apt-get install -y --no-install-recommends bzip2 curl unzip wget && apt-get clean
 
