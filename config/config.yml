@@ -12,3 +12,12 @@ sortmerna:
     - "silva-bac-16s-id90"
     - "silva-bac-23s-id98"
     - "silva-euk-18s-id95"
+trinity:
+  kmer: 32
+  threads: 20
+transabyss:
+  kmer:
+    - 32
+    - 64
+    - 96
+  threads: 20

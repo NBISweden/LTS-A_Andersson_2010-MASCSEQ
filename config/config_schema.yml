@@ -7,8 +7,12 @@ type: object
 properties:
   sample_list:
     type: string
-    description: path to a sample sheet
+    description: "Path to a sample sheet"
     default: "config/samples.csv"
+  mem_per_cpu:
+    type: number
+    description: "Memory in GB per CPU"
+    default: 6.4
   cutadapt:
     type: object
     default:
@@ -36,6 +40,35 @@ properties:
     properties:
       dbs:
         type: array
-        description: databases to use for rRNA identification
+        description: "Databases to use for rRNA identification"
         items:
           type: string
+  trinity:
+    type: object
+    default:
+      kmer: 32
+      threads: 20
+    properties:
+      kmer:
+        type: integer
+        description: "Kmer size to use for trinity"
+      threads:
+        type: integer
+        description: "Threads to use for trinity"
+  transabyss:
+    type: object
+    default:
+      kmer:
+        - 32
+        - 64
+        - 96
+      threads: 20
+    properties:
+      kmer:
+        type: array
+        description: "Kmer sizes to use for transabyss"
+        items:
+          type: integer
+      threads:
+        type: integer
+        description: "Threads to use for transabyss"
