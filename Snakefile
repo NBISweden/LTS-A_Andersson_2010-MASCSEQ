@@ -13,8 +13,9 @@ rule all:
     "Main rule for workflow"
     input:
         "results/multiqc/multiqc.html",
-        expand("results/{assembler}/{sample}/done",
-            assembler = ["trinity","transabyss"],
+        expand("results/transabyss/{sample}/merged.fa",
+            sample = samples.keys()),
+        expand("results/trinity/{sample}/Trinity.fasta",
             sample = samples.keys())
 
 rule link:
@@ -153,13 +154,52 @@ rule transabyss:
         R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
-        touch("results/transabyss/{sample}/done")
+        "results/transabyss/{sample}/{k}/{sample}.{k}-final.fa",
+        "results/transabyss/{sample}/{k}/coverage.hist",
+    log:
+        "results/logs/transabyss/{sample}.{k}.log"
     conda:
         "envs/transabyss.yml"
-    threads: 10
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[0]),
+        tmpdir = "$TMPDIR/{sample}.transabyss"
+    threads: config["transabyss"]["threads"]
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 96
     shell:
         """
-        
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        transabyss --pe {input.R1} {input.R2} -k {wildcards.k} \
+            --outdir {params.tmpdir} --name {wildcards.sample}.{wildcards.k} \
+            --threads {threads} >{log} 2>&1
+        mv {params.tmpdir}/* {params.outdir}
+        """
+
+rule transabyss_merge:
+    input:
+        expand("results/transabyss/{{sample}}/{k}/{{sample}}.{k}-final.fa",
+            k = config["transabyss"]["kmer"])
+    output:
+        "results/transabyss/{sample}/merged.fa"
+    log:
+        "results/logs/transabyss/{sample}.merge.log"
+    conda:
+        "envs/transabyss.yml"
+    params:
+        mink = min(config["transabyss"]["kmer"]),
+        maxk = max(config["transabyss"]["kmer"]),
+        i = lambda wildcards, input: sorted(input),
+        prefix = [f"k{x}." for x in sorted(config["transabyss"]["kmer"])],
+        tmpout = "$TMPDIR/{sample}.ta.merged.fa"
+    threads: config["transabyss"]["threads"]
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+    shell:
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        transabyss-merge {params.i} --mink {params.mink} --maxk {params.maxk} \
+            --out {params.tmpout} --threads {threads} --prefix {params.prefix} > {log} 2>&1
+        mv {params.tmpout} {output}
         """
 
 rule trinity:
@@ -167,11 +207,23 @@ rule trinity:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
-        touch("results/trinity/{sample}/done")
+        touch("results/trinity/{sample}/Trinity.fasta")
+    log:
+        "results/logs/trinity/{sample}.log"
     conda:
         "envs/trinity.yml"
-    threads: 10
+    threads: config["trinity"]["threads"]
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[0]),
+        tmpdir = "$TMPDIR/{sample}.trinity",
+        cpumem = config["mem_per_cpu"]
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 120
     shell:
         """
-
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        max_mem=$(({params.cpumem} * {threads}))
+        Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} \
+            --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        mv {params.tmpdir}/* {params.outdir}/
         """
