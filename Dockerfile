@@ -23,4 +23,4 @@ RUN conda install -c conda-forge mamba \
     && mamba clean --all
 
 # Start Bash shell by default
-CMD /bin/bash
+ENTRYPOINT ["snakemake", "-j 4", "-rpk", "--use-conda", "--conda-frontend mamba"]
