@@ -10,9 +10,9 @@ properties:
     description: "Path to a sample sheet"
     default: "config/samples.csv"
   mem_per_cpu:
-    type: number
+    type: integer
     description: "Memory in GB per CPU"
-    default: 6.4
+    default: 6
   cutadapt:
     type: object
     default:
