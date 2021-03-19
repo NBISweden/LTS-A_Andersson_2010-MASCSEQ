@@ -1,16 +1,20 @@
 import os
 from snakemake.utils import validate
-from src.common import read_samples
+from src.common import read_samples, dammit_input
 
 container: "docker://continuumio/miniconda3:4.9.2"
 configfile: "config/config.yml"
+
 validate(config, schema="config/config_schema.yml", set_default=True)
 samples = read_samples(config["sample_list"])
+
+wildcard_constraints:
+    assembler = "transabyss|trinity"
 
 localrules: all, link, download_rna, multiqc
 
 rule all:
-    "Main rule for workflow"
+    """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
         expand("results/transabyss/{sample}/merged.fa",
@@ -19,6 +23,7 @@ rule all:
             sample = samples.keys())
 
 rule link:
+    """Links input files so that naming is consistent within workflow"""
     input:
         lambda wildcards: samples[wildcards.sample][wildcards.R]
     output:
@@ -32,6 +37,7 @@ rule link:
         """
 
 rule cutadapt:
+    """Runs cutadapt on raw input files"""
     input:
         R1 = ancient("results/intermediate/{sample}_R1.fastq.gz"),
         R2 = ancient("results/intermediate/{sample}_R2.fastq.gz")
@@ -55,6 +61,11 @@ rule cutadapt:
         """
 
 rule download_rna:
+    """Downloads RNA databases from SortMeRNA GitHub repo. 
+    
+    The db wildcard matches any *.fasta file, it gets expanded in the actual
+    sortmerna rule below.
+    """
     output:
         "resources/sortmerna/{db}.fasta"
     params:
@@ -70,6 +81,17 @@ rule download_rna:
         """
 
 rule sortmerna:
+    """
+    Runs sortmerna on the output from cutadapt.
+    
+    Here the db wildcard is expanded using all RNA files set in the config
+    for sortmerna. The rule produces four output files:
+    - fwd and rev files for reads aligned to any of the rRNA databases (rRNA)
+    - fwd and rev files for reads not aligned to any of the databases (mRNA)
+    Note that although we name the non-aligned fraction 'mRNA' it is in fact 
+    just 'non_rRNA'. The 'paired_out' strategy ensures that both reads for a 
+    given pair end up in the mRNA fraction. 
+    """
     input:
         R1 = "results/cutadapt/{sample}_R1.fastq.gz",
         R2 = "results/cutadapt/{sample}_R2.fastq.gz",
@@ -226,4 +248,30 @@ rule trinity:
         Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} \
             --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         mv {params.tmpdir}/* {params.outdir}/
+        """
+
+rule dammit_db:
+    output:
+        touch("resources/dammit/done")
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[0])
+    conda:
+        "envs/dammit.yml"
+    shell:
+        """
+        dammit databases --database-dir {params.outdir} --install
+        """
+
+rule dammit:
+    input:
+        dammit_input
+    output:
+        touch("results/dammit/{sample}/{assembler}/done")
+    log:
+        "results/logs/dammit/{sample}.{assembler}.log"
+    conda:
+        "envs/dammit.yml"
+    shell:
+        """
+        dammit -v > {log} 2>&1
         """
