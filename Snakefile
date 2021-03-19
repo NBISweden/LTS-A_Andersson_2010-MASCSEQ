@@ -272,5 +272,5 @@ rule dammit:
         "envs/dammit.yml"
     shell:
         """
-        dammit -v > {log} 2>&1
+        dammit --version > {log} 2>&1
         """
