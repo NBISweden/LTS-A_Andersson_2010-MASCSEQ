@@ -56,7 +56,7 @@ rule cutadapt:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
     shell:
         """
-        cutadapt -p {threads} -a {params.R1_adapter} -A {params.R2_adapter} \
+        cutadapt -j {threads} -a {params.R1_adapter} -A {params.R2_adapter} \
             -o {output.R1} -p {output.R2} {input.R1} {input.R2} > {log} 2>&1
         """
 
@@ -120,7 +120,7 @@ rule sortmerna:
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
-            --reads {input.R1} --reads {input.R2} {params.string} --paired_in \
+            --reads {input.R1} --reads {input.R2} {params.string} --paired_out \
             --out2 --aligned {params.workdir}/{wildcards.sample}.rRNA \
             --other {params.workdir}/{wildcards.sample}.mRNA > {log.runlog} 2>&1
         gzip {params.workdir}/*.fastq
@@ -229,7 +229,7 @@ rule trinity:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
-        touch("results/trinity/{sample}/Trinity.fasta")
+        "results/trinity/{sample}/Trinity.fasta"
     log:
         "results/logs/trinity/{sample}.log"
     conda:
@@ -245,8 +245,7 @@ rule trinity:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} \
-            --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         mv {params.tmpdir}/* {params.outdir}/
         """
 
