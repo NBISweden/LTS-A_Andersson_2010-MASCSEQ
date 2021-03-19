@@ -18,6 +18,7 @@ properties:
     default:
       R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
       R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
+      minlen: 50
     properties:
       R1_adapter:
         type: string
@@ -25,6 +26,9 @@ properties:
       R2_adapter:
         type: string
         description: Rev adapter for cutadapt
+      minlen:
+        type: integer
+        description: Minimum read length for cutadapt
   sortmerna:
     type: object
     default:

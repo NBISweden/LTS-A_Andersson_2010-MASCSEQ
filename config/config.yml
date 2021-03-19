@@ -3,6 +3,7 @@ mem_per_cpu: 6
 cutadapt:
   R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
   R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
+  minlen: 50
 sortmerna:
   dbs:
     - "silva-arc-16s-id95"

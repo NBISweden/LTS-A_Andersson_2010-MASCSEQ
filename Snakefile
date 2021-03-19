@@ -49,15 +49,17 @@ rule cutadapt:
     threads: 4
     params:
         R1_adapter = config["cutadapt"]["R1_adapter"],
-        R2_adapter = config["cutadapt"]["R2_adapter"]
+        R2_adapter = config["cutadapt"]["R2_adapter"],
+        minlen = config["cutadapt"]["minlen"]
     conda:
         "envs/cutadapt.yml"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
     shell:
         """
-        cutadapt -j {threads} -a {params.R1_adapter} -A {params.R2_adapter} \
-            -o {output.R1} -p {output.R2} {input.R1} {input.R2} > {log} 2>&1
+        cutadapt -m {params.minlen} -j {threads} -a {params.R1_adapter} \
+            -A {params.R2_adapter} -o {output.R1} -p {output.R2} \
+            {input.R1} {input.R2} > {log} 2>&1
         """
 
 rule download_rna:
