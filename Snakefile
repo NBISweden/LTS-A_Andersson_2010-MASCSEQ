@@ -120,7 +120,7 @@ rule sortmerna:
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
-            --reads {input.R1} --reads {input.R2} {params.string} --paired_out \
+            --reads {input.R1} --reads {input.R2} {params.string} --paired_in \
             --out2 --aligned {params.workdir}/{wildcards.sample}.rRNA \
             --other {params.workdir}/{wildcards.sample}.mRNA > {log.runlog} 2>&1
         gzip {params.workdir}/*.fastq
