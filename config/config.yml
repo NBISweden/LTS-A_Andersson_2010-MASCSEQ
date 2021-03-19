@@ -22,3 +22,7 @@ transabyss:
     - 64
     - 96
   threads: 20
+dammit:
+  busco_group:
+    P18363_101: "alveolata_stramenophiles"
+    P18363_103: "alveolata_stramenophiles"
