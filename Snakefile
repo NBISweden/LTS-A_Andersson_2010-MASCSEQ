@@ -129,6 +129,80 @@ rule sortmerna:
         rm -rf {params.workdir}
         """
 
+rule extractTranscriptsFromGenome:
+    input:
+        fasta = config["genomeFasta"]["{sample}"],
+        gff = config["genomeAnnotatio"]["{sample}"]
+    output:
+        fasta = "reference/{sample}_transcripts.fasta.gz"
+    log:
+        "reference/logs/{sample}_extractTranscriptsFromGenome.log"
+    conda:
+        "envs/gffread.yaml"
+    params:
+        script = prependWfd("scripts/fixTranscriptId.py"),
+        temp = "DNAseq/transcripts/tmp_{strain}_transcripts.fasta",
+        make_me_local = True
+    conda: "envs/gffread.yaml"
+    shell:
+        """
+        exec &> {log.log}        
+        gffread {input.gtf} -g {input.fasta} -w {output.fasta} -C -V -M -E 
+        echo "Done!"
+        """
+
+rule kallisto_index:
+    input:
+        fasta = "reference/{sample}_transcripts.fasta.gz"
+    output:
+        index = "reference/{sample}_transcripts.idx"
+    log:
+        "reference/logs/{sample}_kallisto_index.log"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    conda:
+        "envs/kallisto.yml"
+    shell:
+        """
+        exec &> {log}
+
+        kallisto index \
+        -i {output.index} \
+        {input.transcriptsFasta} 
+        """
+        
+rule kallisto_map:
+    input:
+        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz"
+        index = "reference/{sample}.idx"
+    output:
+        tsv = "results/kallisto/{sample}.{RNA}.abundance.tsv".
+        hd5 = "results/kallisto/{sample}.{RNA}.abundance.h5",
+        info = "results/kallisto/{sample}.{RNA}.run_info.json"
+    log:
+        "results/logs/{sample}.{RNA}_kallisto_map.log"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    conda:
+        "envs/kallisto.yml"
+    shell:
+        """
+        exec &> {log}
+
+        kallisto quant \
+        -i {input.index} \
+        -o {params.out} \
+        {input.R1} {input.R2}
+
+        # Change to informative name
+        mv {params.out}/abundance.tsv {output.tsv}
+        mv {params.out}/abundance.h5 {output.h5}
+        mv {params.out}/run_info.json {output.info}
+        """
+
+    
+
 rule fastqc:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
