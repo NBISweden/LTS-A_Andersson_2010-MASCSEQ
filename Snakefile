@@ -148,8 +148,11 @@ rule extractTranscriptsFromGenome:
     conda: "envs/gffread.yaml"
     shell:
         """
-        exec &> {log.log}        
-        gffread {input.gtf} -g {input.fasta} -w {output.fasta} -C -V -M -E 
+        exec &> {log}        
+
+        gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
+        # Additional mRNA-specific options -C -V -M 
+
         echo "Done!"
         """
 
@@ -171,6 +174,8 @@ rule kallisto_index:
         kallisto index \
         -i {output.index} \
         {input.transcriptsFasta} 
+
+        echo "Done!"
         """
         
 rule kallisto_map:
@@ -197,10 +202,12 @@ rule kallisto_map:
         -o {params.out} \
         {input.R1} {input.R2}
 
-        # Change to informative name
+        # Change to informative file names
         mv {params.out}/abundance.tsv {output.tsv}
         mv {params.out}/abundance.h5 {output.h5}
         mv {params.out}/run_info.json {output.info}
+
+        echo "Done!"
         """
 
     
