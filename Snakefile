@@ -49,15 +49,17 @@ rule cutadapt:
     threads: 4
     params:
         R1_adapter = config["cutadapt"]["R1_adapter"],
-        R2_adapter = config["cutadapt"]["R2_adapter"]
+        R2_adapter = config["cutadapt"]["R2_adapter"],
+        minlen = config["cutadapt"]["minlen"]
     conda:
         "envs/cutadapt.yml"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
     shell:
         """
-        cutadapt -j {threads} -a {params.R1_adapter} -A {params.R2_adapter} \
-            -o {output.R1} -p {output.R2} {input.R1} {input.R2} > {log} 2>&1
+        cutadapt -m {params.minlen} -j {threads} -a {params.R1_adapter} \
+            -A {params.R2_adapter} -o {output.R1} -p {output.R2} \
+            {input.R1} {input.R2} > {log} 2>&1
         """
 
 rule download_rna:
@@ -89,8 +91,8 @@ rule sortmerna:
     - fwd and rev files for reads aligned to any of the rRNA databases (rRNA)
     - fwd and rev files for reads not aligned to any of the databases (mRNA)
     Note that although we name the non-aligned fraction 'mRNA' it is in fact 
-    just 'non_rRNA'. The 'paired_out' strategy ensures that both reads for a 
-    given pair end up in the mRNA fraction. 
+    just 'non_rRNA'. The 'paired_in' strategy means that if at least one read in
+    a pair is flagged as rRNA, both are placed in the 'rRNA' fraction.
     """
     input:
         R1 = "results/cutadapt/{sample}_R1.fastq.gz",
@@ -323,28 +325,40 @@ rule trinity:
         mv {params.tmpdir}/* {params.outdir}/
         """
 
-rule dammit_db:
+rule dammit_busco:
     output:
-        touch("resources/dammit/done")
+        directory("resources/dammit/busco2db/{busco_group}_ensembl"),
+        touch("resources/dammit/busco2db/download_and_untar:busco2db-{busco_group}.done")
     params:
-        outdir = lambda wildcards, output: os.path.dirname(output[0])
-    conda:
-        "envs/dammit.yml"
+        tmpdir = "$TMPDIR/dammit/{busco_group}"
     shell:
         """
-        dammit databases --database-dir {params.outdir} --install
+        mkdir -p {params.tmpdir}
+        curl -L https://busco.ezlab.org/v2/datasets/{wildcards.busco_group}_ensembl.tar.gz | tar -xz -C {params.tmpdir}
+        mv {params.tmpdir}/* {output[0]} 
         """
 
 rule dammit:
     input:
-        dammit_input
+        dammit_input,
+        lambda wildcards: f"resources/dammit/busco2db/download_and_untar:busco2db-{config['dammit']['busco_group'][wildcards.sample]}.done"
     output:
         touch("results/dammit/{sample}/{assembler}/done")
     log:
         "results/logs/dammit/{sample}.{assembler}.log"
+    params:
+        dbdir = "resources/dammit",
+        outdir = lambda wildcards, output: os.path.dirname(output[0]),
+        busco_group = lambda wildcards: config["dammit"]["busco_group"][wildcards.sample],
+        tmpdir = "$TMPDIR/dammit/{sample}.{assembler}"
     conda:
         "envs/dammit.yml"
+    threads: 10
     shell:
         """
-        dammit -v > {log} 2>&1
+        dammit annotate {input[0]} -n {wildcards.sample}.{wildcards.assembler} \
+            --n_threads {threads} --database-dir {params.dbdir} \
+            -o {params.tmpdir} --force --busco-group {params.busco_group} \
+            --quick --verbosity 2 > {log} 2>&1
+        mv {params.tmpdir}/* {params.outdir}
         """
