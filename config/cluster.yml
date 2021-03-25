@@ -1,2 +1,53 @@
-__default__:
-  account: snic2020-15-29
+# The cluster config file could be yaml (as here) or json
+# format. This file is used when sending snakemake rules or groups of
+# rules (see Snakefile) to the UPPMAX cluster.  Each 'cluster
+# rule' lists values for options used in the slurm sbatch command used
+# by UPPMAX
+
+# Unless a rule (group of rules) is explicitly listed below, it will
+# be handled by _default_. Moreover, these values will be inherited by
+# all other rules, unless explicitly changed.
+__default__ :
+  name: default            # name of jobs shown in, e.g., jobinfo
+  account: snic2020-15-29  # Uppmax account to use
+  time: 0-01:00:00         # Allocated time
+  partition: core          # Type of computational unit allocated, core or node
+  n: 1                     # Allocated number of computational units
+  other: "--mail-user your@email --mail-type=FAIL,STAGEOUT" # email are sent to this address on failed jobs
+
+## Some rules may require different resources than those in the default:
+
+# NB! the following is just examplifying this behaviour, e.g., the snp and
+# count rules don't exist in the Snakefile. Change as appropriate 
+
+# The snp rule uses more threads, so we need to allocate more cores
+# for it
+snp:
+  name: snp
+  n: 2
+  time: 0-00:30:00
+
+# The count rule uses a single thread, but requires additional memory
+# (RAM).  Because there is a fixed amount of memory allotted per core,
+# we still need to allocate more cores for it.
+count:
+  name: count
+  n: 2
+  time: 0-02:30:00
+
+
+## groups are treated same way as rules, but runs several rules as one
+## job
+
+# runs rules map, index and filter
+mapAndFilter:
+  name: mapAndFilter
+  n: 2
+  time: 0-01:30:00
+
+# run rules snp (which runs on >1 core) and count (which requires more
+# (RAM) memory than that assocaited with 1 core
+snpAndCount:
+  name: snpAndCount
+  n: 2
+  time: 0-02:45:00

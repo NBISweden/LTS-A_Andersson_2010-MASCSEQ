@@ -133,8 +133,8 @@ rule sortmerna:
 
 rule extractTranscriptsFromGenome:
     input:
-        fasta = config["genomeFasta"]["{sample}"],
-        gff = config["genomeAnnotatio"]["{sample}"]
+        fasta = config["genome"]["{sample}"]["fasta"],
+        gff = config["genome"]["{sample}"]["gff"]
     output:
         fasta = "reference/{sample}_transcripts.fasta.gz"
     log:
