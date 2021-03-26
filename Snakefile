@@ -145,7 +145,6 @@ rule extractTranscriptsFromGenome:
         script = prependWfd("scripts/fixTranscriptId.py"),
         temp = "DNAseq/transcripts/tmp_{strain}_transcripts.fasta",
         make_me_local = True
-    conda: "envs/gffread.yaml"
     shell:
         """
         exec &> {log}        
@@ -173,7 +172,7 @@ rule kallisto_index:
 
         kallisto index \
         -i {output.index} \
-        {input.transcriptsFasta} 
+        {input.transcriptsFasta}
 
         echo "Done!"
         """
@@ -181,10 +180,10 @@ rule kallisto_index:
 rule kallisto_map:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
-        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz"
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
         index = "reference/{sample}.idx"
     output:
-        tsv = "results/kallisto/{sample}.{RNA}.abundance.tsv".
+        tsv = "results/kallisto/{sample}.{RNA}.abundance.tsv",
         hd5 = "results/kallisto/{sample}.{RNA}.abundance.h5",
         info = "results/kallisto/{sample}.{RNA}.run_info.json"
     log:
