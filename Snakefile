@@ -156,12 +156,14 @@ rule extractTranscriptsFromGenome:
         fasta = "reference/{sample}_transcripts.fasta.gz"
     log:
         "reference/logs/{sample}_extractTranscriptsFromGenome.log"
-    conda:
-        "envs/gffread.yaml"
     params:
         script = prependWfd("scripts/fixTranscriptId.py"),
         make_me_local = True
-    conda: "envs/gffread.yaml"
+    conda:
+        "envs/gffread.yaml"
+    threads: 1
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
     shell:
         """
         exec &> {log}        
@@ -179,10 +181,11 @@ rule kallisto_index:
         index = "reference/{sample}_transcripts.idx"
     log:
         "reference/logs/{sample}_kallisto_index.log"
-    resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60
     conda:
         "envs/kallisto.yml"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    threads: 1
     shell:
         """
         exec &> {log}
@@ -207,12 +210,13 @@ rule kallisto_map:
         info = "results/kallisto/{sample}.{RNA}.run_info.json"
     log:
         "results/logs/{sample}.{RNA}_kallisto_map.log"
+    params:
+        out = "results/kallisto/"
+    threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
     conda:
         "envs/kallisto.yml"
-    params:
-        out = "results/kallisto/"
     shell:
         """
         exec &> {log}
