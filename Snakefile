@@ -147,6 +147,7 @@ rule extractTranscriptsFromGenome:
     threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
+
     shell:
         """
         exec &> {log}        

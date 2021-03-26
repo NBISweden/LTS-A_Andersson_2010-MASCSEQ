@@ -1,6 +1,7 @@
-name: star
+name: kallisto
 channels:
   - bioconda
   - conda-forge
+  - defaults
 dependencies:
-  - kallisto
+  - kallisto=0.46.2
