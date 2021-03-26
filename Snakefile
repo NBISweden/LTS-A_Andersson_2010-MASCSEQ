@@ -1,12 +1,29 @@
 import os
 from snakemake.utils import validate
-from src.common import read_samples, dammit_input
+from src.common import read_samples, dammit_input, prependWfd, prependPwd
 
-container: "docker://continuumio/miniconda3:4.9.2"
-configfile: "config/config.yml"
+# I would like to put these in src.common, but the I can't access workflow.basedir:( solve it later
+""" It is good keep the code and the results separate, so
+    we run the workflow in a separate working directory. However,
+    we sometimes need to access files in the code folder. This
+    function prepends a file path with the path to the workflow
+    base directory (kept in snakemake variable workflow.basedir) """
+def prependWfd(path):
+    return(os.path.normpath(os.path.join(workflow.basedir, path)))
 
-validate(config, schema="config/config_schema.yml", set_default=True)
-samples = read_samples(config["sample_list"])
+""" Mostly, snakemake uses relative paths (to the working directory)
+    when referring to, e.g., input and output files. However, when
+    soft-linking (creating aliases) from external file, full paths
+    must be used. This function prepends the path to the current
+    working directory (accessed by the python function os.getcwd()). """
+def prependPwd(path):
+    return(os.path.normpath(os.path.join(os.getcwd(), path)))
+
+container: prependWfd("docker://continuumio/miniconda3:4.9.2")
+configfile: prependWfd("config/config.yml")
+
+validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
+samples = read_samples(prependWfd(config["sample_list"]))
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
@@ -133,8 +150,8 @@ rule sortmerna:
 
 rule extractTranscriptsFromGenome:
     input:
-        fasta = config["genome"]["{sample}"]["fasta"],
-        gff = config["genome"]["{sample}"]["gff"]
+        fasta = lambda wc: config["genome"][wc.sample]["fasta"],
+        gff = lambda wc: config["genome"][wc.sample]["gff"]
     output:
         fasta = "reference/{sample}_transcripts.fasta.gz"
     log:
@@ -143,7 +160,6 @@ rule extractTranscriptsFromGenome:
         "envs/gffread.yaml"
     params:
         script = prependWfd("scripts/fixTranscriptId.py"),
-        temp = "DNAseq/transcripts/tmp_{strain}_transcripts.fasta",
         make_me_local = True
     conda: "envs/gffread.yaml"
     shell:
@@ -173,7 +189,7 @@ rule kallisto_index:
 
         kallisto index \
         -i {output.index} \
-        {input.transcriptsFasta} 
+        {input.fasta} 
 
         echo "Done!"
         """
@@ -181,11 +197,13 @@ rule kallisto_index:
 rule kallisto_map:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
-        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz"
-        index = "reference/{sample}.idx"
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
+        index = lambda wc: expand("reference/{ref}_transcripts.idx",
+                                  ref = samples[wc.sample]["reference"])
+
     output:
-        tsv = "results/kallisto/{sample}.{RNA}.abundance.tsv".
-        hd5 = "results/kallisto/{sample}.{RNA}.abundance.h5",
+        tsv = "results/kallisto/{sample}.{RNA}.abundance.tsv",
+        h5 = "results/kallisto/{sample}.{RNA}.abundance.h5",
         info = "results/kallisto/{sample}.{RNA}.run_info.json"
     log:
         "results/logs/{sample}.{RNA}_kallisto_map.log"
@@ -193,6 +211,8 @@ rule kallisto_map:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
     conda:
         "envs/kallisto.yml"
+    params:
+        out = "results/kallisto/"
     shell:
         """
         exec &> {log}
