@@ -196,7 +196,7 @@ rule kallisto_map:
         "results/logs/{sample}.{RNA}_kallisto_map.log"
     params:
         out = "results/kallisto/"
-    threads: 1
+    threads: 10
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
     conda:
@@ -208,6 +208,7 @@ rule kallisto_map:
         kallisto quant \
         -i {input.index} \
         -o {params.out} \
+        -t {threads} \
         {input.R1} {input.R2}
 
         # Change to informative file names
