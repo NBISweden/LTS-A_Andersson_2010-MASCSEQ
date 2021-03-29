@@ -1,0 +1,26 @@
+$schema: "http://json-schema.org/draft-06/schema#"
+description: an entry in the sample sheet
+properties:
+  sample_id:
+    type: string
+    description: sample name/identifier
+  R1:
+    type: string
+    description: File path for fwd sequence file
+  R2:
+    type: string
+    description: File path for rev sequence file
+  reference:
+    type: string
+    description: Name of genome reference
+  type:
+    type: string
+    enum: ["genome", "transcriptome"]
+    description: Type of analysis
+
+required:
+  - sample_id
+  - R1
+  - R2
+  - reference
+  - type
