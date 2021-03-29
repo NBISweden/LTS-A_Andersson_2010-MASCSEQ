@@ -13,6 +13,13 @@ wildcard_constraints:
 
 localrules: all, link, download_rna, multiqc
 
+def kallisto_output(samples):
+    files = []
+    for sample, vals in samples.items():
+        if vals["type"] == "genome":
+            files.append(f"results/kallisto/{sample}.mRNA.abundance.tsv")
+    return files
+
 rule all:
     """Main rule for workflow"""
     input:
@@ -20,7 +27,8 @@ rule all:
         expand("results/transabyss/{sample}/merged.fa",
             sample = samples.keys()),
         expand("results/trinity/{sample}/Trinity.fasta",
-            sample = samples.keys())
+            sample = samples.keys()),
+        kallisto_output(samples)
 
 rule link:
     """Links input files so that naming is consistent within workflow"""
