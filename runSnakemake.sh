@@ -21,7 +21,7 @@ fi
 # Set up a conda env for snakemake + mamba -- so snakemake also uses mamba
 snakemake="nbis_project_snakemake"
 if [[ "$(mamba info -e | awk -v var=$snakemake '{if($1==var)print "found"}')" != "found" ]]; then
-    mamba env create --file $DIR/environent.yaml
+    mamba env create --file $DIR/environment.yml
 fi
 snakemake=$(mamba info -e | awk -v var=$snakemake '{if($1==var)print $2}')
 eval "$(conda shell.bash hook)"
