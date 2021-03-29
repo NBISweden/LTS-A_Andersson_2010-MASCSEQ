@@ -33,16 +33,14 @@ if [ "$CLUSTER" = "rackham" ]; then # Change/add cluster name if needed
     time snakemake \
 	 --conda-frontend mamba \
 	 -j \
-	 -k \
 	 --snakefile $DIR/Snakefile \
 	 --use-conda \
-	 --profile $DIR/slurm \
+	 --use-singularity \
+	 --cluster-config $DIR/config/cluster.yml \
+	 --cluster " sbatch -J {cluster.name} -A {cluster.account} \
+	             -p {cluster.partition} -n {cluster.n} -t {cluster.time} \
+                     {cluster.other} " \
 	 $@
-#	 --use-singularity \
-#	 --cluster-config $DIR/config/cluster.yml \
-#	 --cluster " sbatch -J {cluster.name} -A {cluster.account} \
-#	             -p {cluster.partition} -n {cluster.n} -t {cluster.time} \
-#                     {cluster.other} \
     # Explanation of command and options:
     # `time`           just gives execution time report
     # --conda-frontend mamba 
