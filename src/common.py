@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
 import pandas as pd
+from snakemake.utils import validate
 
 
 def read_samples(f):
-    df = pd.read_csv(f, index_col=0)
+    df = pd.read_csv(f)
+    validate(df, schema=prependWfd("config/samples_schema.yml"))
+    df.set_index("sample_id", inplace=True)
     return df.to_dict(orient="index")
 
 
