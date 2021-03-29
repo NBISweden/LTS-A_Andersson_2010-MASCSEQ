@@ -1,4 +1,4 @@
-name: masc-seq
+name: masc-seq-asm
 channels:
     - conda-forge
     - bioconda
