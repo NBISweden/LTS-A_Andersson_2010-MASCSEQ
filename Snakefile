@@ -133,12 +133,12 @@ rule sortmerna:
 
 rule extractTranscriptsFromGenome:
     input:
-        fasta = lambda wc: config["genome"][wc.sample]["fasta"],
-        gff = lambda wc: config["genome"][wc.sample]["gff"]
+        fasta = lambda wc: config["genome"][wc.ref]["fasta"],
+        gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta = "reference/{sample}_transcripts.fasta.gz"
+        fasta = "reference/{ref}_transcripts.fasta.gz"
     log:
-        "reference/logs/{sample}_extractTranscriptsFromGenome.log"
+        "reference/logs/{ref}_extractTranscriptsFromGenome.log"
     params:
         script = prependWfd("scripts/fixTranscriptId.py"),
         make_me_local = True
@@ -147,7 +147,6 @@ rule extractTranscriptsFromGenome:
     threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
-
     shell:
         """
         exec &> {log}        
@@ -160,11 +159,11 @@ rule extractTranscriptsFromGenome:
 
 rule kallisto_index:
     input:
-        fasta = "reference/{sample}_transcripts.fasta.gz"
+        fasta = "reference/{ref}_transcripts.fasta.gz"
     output:
-        index = "reference/{sample}_transcripts.idx"
+        index = "reference/{ref}_transcripts.idx"
     log:
-        "reference/logs/{sample}_kallisto_index.log"
+        "reference/logs/{ref}_kallisto_index.log"
     conda:
         "envs/kallisto.yml"
     resources:
@@ -187,7 +186,6 @@ rule kallisto_map:
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
         index = lambda wc: expand("reference/{ref}_transcripts.idx",
                                   ref = samples[wc.sample]["reference"])
-
     output:
         tsv = "results/kallisto/{sample}.{RNA}.abundance.tsv",
         h5 = "results/kallisto/{sample}.{RNA}.abundance.h5",
