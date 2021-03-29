@@ -2,7 +2,7 @@ import os
 from snakemake.utils import validate
 
 include: "src/common.py"
-container: prependWfd("docker://continuumio/miniconda3:4.9.2")
+container: "docker://continuumio/miniconda3:4.9.2"
 configfile: prependWfd("config/config.yml")
 
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
