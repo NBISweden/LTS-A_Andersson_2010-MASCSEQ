@@ -36,7 +36,7 @@ if [ "$CLUSTER" = "rackham" ]; then # Change/add cluster name if needed
 	 -k \
 	 --snakefile $DIR/Snakefile \
 	 --use-conda \
-	 --profile s$DIR/slurm \
+	 --profile $DIR/slurm \
 	 $@
 	 # --use-singularity \
 	 # --cluster-config $DIR/config/cluster.yml \
