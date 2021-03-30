@@ -11,7 +11,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc
+localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
 
 def kallisto_output(samples):
     files = []
