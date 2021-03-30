@@ -19,12 +19,13 @@ if ! [ -x "$(command -v mamba)" ]; then
 fi
 
 # Set up a conda env for snakemake + mamba -- so snakemake also uses mamba
-snakemake="masc-seq-asm"
+snakemake="masc-seq"
 if [[ "$(mamba info -e | awk -v var=$snakemake '{if($1==var)print "found"}')" != "found" ]]; then
     mamba env create --file $DIR/environment.yml
 fi
 snakemake=$(mamba info -e | awk -v var=$snakemake '{if($1==var)print $2}')
 eval "$(conda shell.bash hook)"
+echo "Using environment: $snakemake"
 conda activate $snakemake
 
 # # Allow for either running on cluster or on local computer/laptop
