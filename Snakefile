@@ -11,7 +11,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc
+localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
 
 def kallisto_output(samples):
     files = []
@@ -274,15 +274,15 @@ rule trinity:
 
 rule extractTranscriptsFromGenome:
     input:
-        fasta=lambda wc: config["genome"][wc.ref]["fasta"],
-        gff=lambda wc: config["genome"][wc.ref]["gff"]
+        fasta = lambda wc: config["genome"][wc.ref]["fasta"],
+        gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta="reference/{ref}_transcripts.fasta.gz"
+        fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
     log:
-        "reference/logs/{ref}_extractTranscriptsFromGenome.log"
+        "reference/logs/genome/{ref}_extractTranscriptsFromGenome.log"
     params:
-        script=prependWfd("scripts/fixTranscriptId.py"),
-        make_me_local=True
+        script = prependWfd("scripts/fixTranscriptId.py"),
+        make_me_local = True
     conda:
         "envs/gffread.yaml"
     threads: 1
@@ -300,11 +300,11 @@ rule extractTranscriptsFromGenome:
 
 rule kallisto_index:
     input:
-        fasta="reference/{ref}_transcripts.fasta.gz"
+        fasta = "reference/{type}/{ref}_transcriptsFromGenome.fasta.gz"
     output:
-        index="reference/{ref}_transcripts.idx"
+        index = "reference/{type}/{ref}_transcripts.idx"
     log:
-        "reference/logs/{ref}_kallisto_index.log"
+        "reference/logs/{type}/{ref}_kallisto_index.log"
     conda:
         "envs/kallisto.yml"
     resources:
@@ -323,18 +323,17 @@ rule kallisto_index:
 
 rule kallisto_map:
     input:
-        R1="results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
-        R2="results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
-        index=lambda wc: expand("reference/{ref}_transcripts.idx",
-            ref=samples[wc.sample]["reference"])
+        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
+        index = "reference/{type}/{ref}_transcripts.idx"
     output:
-        tsv="results/kallisto/{sample}.{RNA}.abundance.tsv",
-        h5="results/kallisto/{sample}.{RNA}.abundance.h5",
-        info="results/kallisto/{sample}.{RNA}.run_info.json"
+        tsv = "results/kallisto/{type}/{sample}.{RNA}.abundance.tsv",
+        h5 = "results/kallisto/{type}/{sample}.{RNA}.abundance.h5",
+        info = "results/kallisto/{type}/{sample}.{RNA}.run_info.json"
     log:
-        "results/logs/{sample}.{RNA}_kallisto_map.log"
+        "results/logs/{type}/{sample}.{RNA}_kallisto_map.log"
     params:
-        out="results/kallisto/"
+        out = "results/kallisto/"
     threads: 10
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
