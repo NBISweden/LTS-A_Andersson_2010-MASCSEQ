@@ -144,7 +144,7 @@ rule extractTranscriptsFromGenome:
         fasta = lambda wc: config["genome"][wc.ref]["fasta"],
         gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta = "reference/{ref}_transcripts.fasta.gz"
+        fasta = "reference/{ref}_transcriptsFromGenome.fasta.gz"
     log:
         "reference/logs/{ref}_extractTranscriptsFromGenome.log"
     params:
@@ -167,7 +167,9 @@ rule extractTranscriptsFromGenome:
 
 rule kallisto_index:
     input:
-        fasta = "reference/{ref}_transcripts.fasta.gz"
+        fasta = "reference/{ref}_transcriptsFromGenome.fasta.gz" \
+            if samples["ref"]["type"] == "genome" else \
+            "reference/{ref}_transcripts.fasta.gz"
     output:
         index = "reference/{ref}_transcripts.idx"
     log:
