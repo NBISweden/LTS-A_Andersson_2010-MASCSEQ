@@ -1,6 +1,6 @@
 import os
 from snakemake.utils import validate
-from src.common import read_samples, dammit_input
+from src.common import read_samples, assembler_input
 
 container: "docker://continuumio/miniconda3:4.9.2"
 configfile: "config/config.yml"
@@ -252,11 +252,26 @@ rule trinity:
         """
 
 rule transrate:
+    input:
+        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+        fa=assembler_input
     output:
-        touch("results/transrate/{sample}/{assembler}.out")
-    container: "docker://biocontainers/transrate"
+        "results/transrate/{sample}/{assembler}.csv",
+        directory("results/transrate/{sample}/{assembler}")
+    params:
+        outdir = "$TMPDIR/transrate-{sample}.{assembler}",
+    threads: 10
+    conda:
+        "envs/transrate.yml"
     shell:
-        "transrate -v"
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        transrate --assembly {input.fa} --left {input.R1} --right {input.R2} \
+            --threads {threads} --output {params.outdir}
+        mv {params.outdir}/assemblies.csv {output[0]}
+        mv {params.outdir}/merged {output[1]}
+        """
 
 rule dammit_busco:
     output:
@@ -273,7 +288,7 @@ rule dammit_busco:
 
 rule dammit:
     input:
-        dammit_input,
+        assembler_input,
         lambda wildcards: f"resources/dammit/busco2db/download_and_untar:busco2db-{config['dammit']['busco_group'][wildcards.sample]}.done"
     output:
         touch("results/dammit/{sample}/{assembler}/done")
