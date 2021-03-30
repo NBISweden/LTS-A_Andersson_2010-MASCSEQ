@@ -251,6 +251,13 @@ rule trinity:
         mv {params.tmpdir}/* {params.outdir}/
         """
 
+rule transrate:
+    output:
+        touch("results/transrate/{sample}/{assembler}.out")
+    container: "docker://biocontainers/transrate"
+    shell:
+        "transrate -v"
+
 rule dammit_busco:
     output:
         directory("resources/dammit/busco2db/{busco_group}_ensembl"),
