@@ -169,7 +169,7 @@ rule kallisto_index:
     input:
         fasta = "reference/{ref}_transcriptsFromGenome.fasta.gz" \
             if samples["ref"]["type"] == "genome" else \
-            "reference/{ref}_transcripts.fasta.gz"
+            "reference/{ref}_transcriptsFromTranscriptome.fasta.gz"
     output:
         index = "reference/{ref}_transcripts.idx"
     log:
