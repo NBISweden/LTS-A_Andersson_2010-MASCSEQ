@@ -280,9 +280,6 @@ rule extractTranscriptsFromGenome:
         fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
     log:
         "reference/logs/genome/{ref}_extractTranscriptsFromGenome.log"
-    params:
-        script = prependWfd("scripts/fixTranscriptId.py"),
-        make_me_local = True
     conda:
         "envs/gffread.yaml"
     threads: 1
