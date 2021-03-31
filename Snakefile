@@ -295,13 +295,16 @@ rule extractTranscriptsFromGenome:
         echo "Done!"
         """
 
-rule kallisto_index:
+rule kallisto_index_asm:
+    """
+    Index an assembly for kallisto mapping
+    """
     input:
-        fasta = "reference/{type}/{ref}_transcriptsFromGenome.fasta.gz"
+        fasta = assembly_input
     output:
-        index = "reference/{type}/{ref}_transcripts.idx"
+        index = "results/kallisto/{sample}/{assembler}_transcripts.idx"
     log:
-        "reference/logs/{type}/{ref}_kallisto_index.log"
+        "results/logs/kallisto/{sample}/{assembler}.index.log"
     conda:
         "envs/kallisto.yml"
     resources:
@@ -318,19 +321,79 @@ rule kallisto_index:
         echo "Done!"
         """
 
-rule kallisto_map:
+
+rule kallisto_index_genome:
+    input:
+        fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
+    output:
+        index = "reference/genome/{ref}_transcripts.idx"
+    log:
+        "reference/logs/genome/{ref}_kallisto_index.log"
+    conda:
+        "envs/kallisto.yml"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    threads: 1
+    shell:
+        """
+        exec &> {log}
+
+        kallisto index \
+        -i {output.index} \
+        {input.fasta} 
+
+        echo "Done!"
+        """
+
+rule kallisto_map_asm:
+    input:
+        R1="results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2="results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
+        index="results/kallisto/{sample}/{assembler}_transcripts.idx"
+    output:
+        tsv = "results/kallisto/{sample}/{assembler}.{RNA}.abundance.tsv",
+        h5 = "results/kallisto/{sample}/{assembler}.{RNA}.abundance.h5",
+        info = "results/kallisto/{sample}/{assembler}.{RNA}.run_info.json"
+    log:
+        "results/logs/kallisto/{sample}/{assembler}.{RNA}.kallisto_map.log"
+    params:
+        out = "$TMPDIR/{sample}.{assembler}.{RNA}"
+    threads: 10
+    resources:
+        runtime= lambda wildcards,attempt: attempt ** 2 * 60
+    conda:
+        "envs/kallisto.yml"
+    shell:
+        """
+        exec &> {log}
+
+        kallisto quant \
+        -i {input.index} \
+        -o {params.out} \
+        -t {threads} \
+        {input.R1} {input.R2}
+
+        # Change to informative file names
+        mv {params.out}/abundance.tsv {output.tsv}
+        mv {params.out}/abundance.h5 {output.h5}
+        mv {params.out}/run_info.json {output.info}
+
+        echo "Done!"
+        """
+
+rule kallisto_map_genome:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
-        index = "reference/{type}/{ref}_transcripts.idx"
+        index = "reference/genome/{ref}_transcripts.idx"
     output:
-        tsv = "results/kallisto/{type}/{sample}.{RNA}.abundance.tsv",
-        h5 = "results/kallisto/{type}/{sample}.{RNA}.abundance.h5",
-        info = "results/kallisto/{type}/{sample}.{RNA}.run_info.json"
+        tsv = "results/kallisto/{sample}/{ref}.{RNA}.abundance.tsv",
+        h5 = "results/kallisto/{sample}/{ref}.{RNA}.abundance.h5",
+        info = "results/kallisto/{sample}/{ref}.{RNA}.run_info.json"
     log:
-        "results/logs/{type}/{sample}.{RNA}_kallisto_map.log"
+        "results/logs/kallisto/{sample}/{ref}.{RNA}.kallisto_map.log"
     params:
-        out = "results/kallisto/"
+        out = "$TMPDIR/{sample}.{ref}.{RNA}"
     threads: 10
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
@@ -373,7 +436,7 @@ rule dammit_busco:
 
 rule dammit:
     input:
-        dammit_input,
+        assembly_input,
         lambda wildcards: f"resources/dammit/busco2db/download_and_untar:busco2db-{config['dammit']['busco_group'][wildcards.sample]}.done"
     output:
         touch("results/dammit/{sample}/{assembler}/done")
