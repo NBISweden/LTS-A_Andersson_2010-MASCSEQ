@@ -1,6 +1,8 @@
 sample_list: "config/samples.csv"
 mem_per_cpu: 6
-assemblers: ["trinity","transabyss"]
+assemblers:
+  - "trinity"
+  - "transabyss"
 cutadapt:
   R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
   R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"

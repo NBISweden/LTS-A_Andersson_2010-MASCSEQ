@@ -9,6 +9,12 @@ properties:
     type: string
     description: "Path to a sample sheet"
     default: "config/samples.csv"
+  assemblers:
+    type: array
+    description: "Assembler(s) to use"
+    items:
+      type: string
+      enum: ["transabyss", "trinity"]
   mem_per_cpu:
     type: integer
     description: "Memory in GB per CPU"
