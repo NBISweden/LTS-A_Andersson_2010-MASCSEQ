@@ -28,7 +28,7 @@ rule all:
             sample = samples.keys()),
         expand("results/trinity/{sample}/Trinity.fasta",
             sample = samples.keys()),
-        kallisto_output(samples)
+        #kallisto_output(samples)
 
 #####################
 ### PREPROCESSING ###
@@ -205,7 +205,7 @@ rule transabyss:
         tmpdir = "$TMPDIR/{sample}.transabyss"
     threads: config["transabyss"]["threads"]
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 96
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
@@ -233,7 +233,7 @@ rule transabyss_merge:
         tmpout = "$TMPDIR/{sample}.ta.merged.fa"
     threads: config["transabyss"]["threads"]
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
@@ -258,7 +258,7 @@ rule trinity:
         tmpdir = "$TMPDIR/{sample}.trinity",
         cpumem = config["mem_per_cpu"]
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 120
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
