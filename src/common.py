@@ -11,7 +11,7 @@ def read_samples(f):
     return df.to_dict(orient="index")
 
 
-def dammit_input(wildcards):
+def assembly_input(wildcards):
     if wildcards.assembler == "transabyss":
         i = "merged.fa"
     elif wildcards.assembler == "trinity":
