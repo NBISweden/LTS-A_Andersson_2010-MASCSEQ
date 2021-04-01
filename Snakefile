@@ -28,10 +28,6 @@ rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
-        expand("results/transabyss/{sample}/merged.fa",
-            sample = samples.keys()),
-        expand("results/trinity/{sample}/Trinity.fasta",
-            sample = samples.keys()),
         kallisto_output(samples, config)
 
 #####################
