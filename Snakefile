@@ -13,11 +13,15 @@ wildcard_constraints:
 
 localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
 
-def kallisto_output(samples):
+def kallisto_output(samples, config):
     files = []
     for sample, vals in samples.items():
-        if vals["type"] == "genome":
-            files.append(f"results/kallisto/{sample}.mRNA.abundance.tsv")
+        t = samples[sample]["type"]
+        if t == "genome":
+            ref = samples[sample]["reference"]
+            files.append(f"results/kallisto/{sample}/{ref}.mRNA.abundance.tsv")
+        elif t == "transcriptome":
+            files+=[f"results/kallisto/{sample}/{assembler}.mRNA.abundance.tsv" for assembler in config["assemblers"]]
     return files
 
 rule all:
@@ -28,7 +32,7 @@ rule all:
             sample = samples.keys()),
         expand("results/trinity/{sample}/Trinity.fasta",
             sample = samples.keys()),
-        kallisto_output(samples)
+        kallisto_output(samples, config)
 
 #####################
 ### PREPROCESSING ###
