@@ -32,7 +32,7 @@ dammit:
     P18363_103: "alveolata_stramenophiles"
 genome:
   Phaeodactylum:
-    #fasta: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
-    #gff: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.48.chr.gff3"
-    fasta: "data/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
-    gff: "data/Phaeodactylum_tricornutum.ASM15095v2.48.chr.gff3"
+    fasta: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
+    gff: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.48.chr.gff3"
+    #fasta: "data/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
+    #gff: "data/Phaeodactylum_tricornutum.ASM15095v2.48.chr.gff3"
