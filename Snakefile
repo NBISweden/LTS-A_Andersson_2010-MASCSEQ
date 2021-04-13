@@ -309,7 +309,7 @@ rule kallisto_index_asm:
         "envs/kallisto.yml"
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
-    threads: 1
+    threads: 20
     shell:
         """
         exec &> {log}
