@@ -1,9 +1,10 @@
-name: masc-seq
+name: masc-seq-asm
 channels:
     - conda-forge
     - bioconda
     - defaults
 dependencies:
-    - python
-    - snakemake-minimal
-    - pandas
+    - python=3.9.2
+    - snakemake-minimal=6.0.5
+    - pandas=1.2.3
+    - mamba >= 0.3.6
