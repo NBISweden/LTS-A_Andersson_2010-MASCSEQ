@@ -1,26 +1,38 @@
 import os
 from snakemake.utils import validate
-from src.common import read_samples, dammit_input
 
+include: "src/common.py"
 container: "docker://continuumio/miniconda3:4.9.2"
-configfile: "config/config.yml"
+configfile: prependWfd("config/config.yml")
 
-validate(config, schema="config/config_schema.yml", set_default=True)
-samples = read_samples(config["sample_list"])
+validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
+samples = read_samples(prependWfd(config["sample_list"]))
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc
+localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
+
+def kallisto_output(samples, config):
+    files = []
+    for sample, vals in samples.items():
+        t = samples[sample]["type"]
+        if t == "genome":
+            ref = samples[sample]["reference"]
+            files.append(f"results/kallisto/{sample}/{ref}.mRNA.abundance.tsv")
+        elif t == "transcriptome":
+            files+=[f"results/kallisto/{sample}/{assembler}.mRNA.abundance.tsv" for assembler in config["assemblers"]]
+    return files
 
 rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
-        expand("results/transabyss/{sample}/merged.fa",
-            sample = samples.keys()),
-        expand("results/trinity/{sample}/Trinity.fasta",
-            sample = samples.keys())
+        kallisto_output(samples, config)
+
+#####################
+### PREPROCESSING ###
+#####################
 
 rule link:
     """Links input files so that naming is consistent within workflow"""
@@ -173,6 +185,10 @@ rule multiqc:
         multiqc -o {params.outdir} -n {params.base} {input} > {log} 2>&1
         """
 
+################
+### ASSEMBLY ###
+################
+
 rule transabyss:
     input:
         R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
@@ -189,7 +205,7 @@ rule transabyss:
         tmpdir = "$TMPDIR/{sample}.transabyss"
     threads: config["transabyss"]["threads"]
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 96
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
@@ -217,7 +233,7 @@ rule transabyss_merge:
         tmpout = "$TMPDIR/{sample}.ta.merged.fa"
     threads: config["transabyss"]["threads"]
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
@@ -242,7 +258,7 @@ rule trinity:
         tmpdir = "$TMPDIR/{sample}.trinity",
         cpumem = config["mem_per_cpu"]
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 120
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
@@ -250,6 +266,160 @@ rule trinity:
         Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         mv {params.tmpdir}/* {params.outdir}/
         """
+
+
+###############
+### MAPPING ###
+###############
+
+rule extractTranscriptsFromGenome:
+    input:
+        fasta = lambda wc: config["genome"][wc.ref]["fasta"],
+        gff = lambda wc: config["genome"][wc.ref]["gff"]
+    output:
+        fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
+    log:
+        "reference/logs/genome/{ref}_extractTranscriptsFromGenome.log"
+    conda:
+        "envs/gffread.yaml"
+    threads: 1
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    shell:
+        """
+        exec &> {log}        
+
+        gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
+        # Additional mRNA-specific options -C -V -M 
+
+        echo "Done!"
+        """
+
+rule kallisto_index_asm:
+    """
+    Index an assembly for kallisto mapping
+    """
+    input:
+        fasta = assembly_input
+    output:
+        index = "results/kallisto/{sample}/{assembler}_transcripts.idx"
+    log:
+        "results/logs/kallisto/{sample}/{assembler}.index.log"
+    conda:
+        "envs/kallisto.yml"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    threads: 20
+    shell:
+        """
+        exec &> {log}
+
+        kallisto index \
+        -i {output.index} \
+        {input.fasta} 
+
+        echo "Done!"
+        """
+
+
+rule kallisto_index_genome:
+    input:
+        fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
+    output:
+        index = "reference/genome/{ref}_transcripts.idx"
+    log:
+        "reference/logs/genome/{ref}_kallisto_index.log"
+    conda:
+        "envs/kallisto.yml"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    threads: 1
+    shell:
+        """
+        exec &> {log}
+
+        kallisto index \
+        -i {output.index} \
+        {input.fasta} 
+
+        echo "Done!"
+        """
+
+rule kallisto_map_asm:
+    input:
+        R1="results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2="results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
+        index="results/kallisto/{sample}/{assembler}_transcripts.idx"
+    output:
+        tsv = "results/kallisto/{sample}/{assembler}.{RNA}.abundance.tsv",
+        h5 = "results/kallisto/{sample}/{assembler}.{RNA}.abundance.h5",
+        info = "results/kallisto/{sample}/{assembler}.{RNA}.run_info.json"
+    log:
+        "results/logs/kallisto/{sample}/{assembler}.{RNA}.kallisto_map.log"
+    params:
+        out = "$TMPDIR/{sample}.{assembler}.{RNA}"
+    threads: 10
+    resources:
+        runtime= lambda wildcards,attempt: attempt ** 2 * 60
+    conda:
+        "envs/kallisto.yml"
+    shell:
+        """
+        exec &> {log}
+
+        kallisto quant \
+        -i {input.index} \
+        -o {params.out} \
+        -t {threads} \
+        {input.R1} {input.R2}
+
+        # Change to informative file names
+        mv {params.out}/abundance.tsv {output.tsv}
+        mv {params.out}/abundance.h5 {output.h5}
+        mv {params.out}/run_info.json {output.info}
+
+        echo "Done!"
+        """
+
+rule kallisto_map_genome:
+    input:
+        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
+        index = "reference/genome/{ref}_transcripts.idx"
+    output:
+        tsv = "results/kallisto/{sample}/{ref}.{RNA}.abundance.tsv",
+        h5 = "results/kallisto/{sample}/{ref}.{RNA}.abundance.h5",
+        info = "results/kallisto/{sample}/{ref}.{RNA}.run_info.json"
+    log:
+        "results/logs/kallisto/{sample}/{ref}.{RNA}.kallisto_map.log"
+    params:
+        out = "$TMPDIR/{sample}.{ref}.{RNA}"
+    threads: 10
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    conda:
+        "envs/kallisto.yml"
+    shell:
+        """
+        exec &> {log}
+
+        kallisto quant \
+        -i {input.index} \
+        -o {params.out} \
+        -t {threads} \
+        {input.R1} {input.R2}
+
+        # Change to informative file names
+        mv {params.out}/abundance.tsv {output.tsv}
+        mv {params.out}/abundance.h5 {output.h5}
+        mv {params.out}/run_info.json {output.info}
+
+        echo "Done!"
+        """
+
+##################
+### ANNOTATION ###
+##################
 
 rule dammit_busco:
     output:
@@ -266,7 +436,7 @@ rule dammit_busco:
 
 rule dammit:
     input:
-        dammit_input,
+        assembly_input,
         lambda wildcards: f"resources/dammit/busco2db/download_and_untar:busco2db-{config['dammit']['busco_group'][wildcards.sample]}.done"
     output:
         touch("results/dammit/{sample}/{assembler}/done")
