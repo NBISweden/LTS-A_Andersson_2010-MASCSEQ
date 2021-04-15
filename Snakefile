@@ -563,7 +563,7 @@ rule transrate:
     input:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-        fa=assembler_input
+        fa=assembly_input
     output:
         "results/transrate/{sample}/{assembler}.csv",
         directory("results/transrate/{sample}/{assembler}")
