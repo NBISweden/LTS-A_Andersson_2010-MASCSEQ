@@ -2,7 +2,7 @@ import os
 from snakemake.utils import validate
 from src.common import read_samples, assembly_input
 
-include: "src/common.py"
+include: "src/common.py"g
 container: "docker://continuumio/miniconda3:4.9.2"
 configfile: prependWfd("config/config.yml")
 
@@ -12,7 +12,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
+localrules: all, link*, download_rna, multiqc, extractTranscriptsFromGenome
 
 def kallisto_output(samples, config):
     files = []
@@ -273,14 +273,36 @@ rule trinity:
 ### MAPPING ###
 ###############
 
-rule extractTranscriptsFromGenome:
+rule linkReferenceGenome:
     input:
         fasta = lambda wc: config["genome"][wc.ref]["fasta"],
         gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
+        fasta = "results/genome/reference/{ref}.fasta.gz"
+        gff = "results/genome/reference/{ref}.gff"
     log:
-        "reference/logs/genome/{ref}_extractTranscriptsFromGenome.log"
+        "results/logs/genome/reference/{ref}_linkReferenceGenome.log"
+    params:
+        fastaout = prependWfd({output.fasta}),
+        gffout = prependWfd({output.gff})
+    shell:
+        """
+        exec &> {log}        
+        
+        ln -s  {input.fasta} {params.gff}
+        ln -s  {input.gff} {params.gff}
+
+        """
+        
+        
+rule extractTranscriptsFromGenome:
+    input:
+        fasta = "results/genome/reference/{ref}.fasta.gz"
+        gff = "results/genome/reference/{ref}.gff"
+    output:
+        fasta = "results/transcriptome/reference/{ref}_transcriptsFromGenome.fasta.gz"
+    log:
+        "results/logs/genome/reference/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
     threads: 1
@@ -417,7 +439,6 @@ rule kallisto_map_genome:
 
         echo "Done!"
         """
-
 
 rule star_index_genome:
     """
