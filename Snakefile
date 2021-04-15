@@ -418,6 +418,114 @@ rule kallisto_map_genome:
         echo "Done!"
         """
 
+
+rule star_index_genome:
+    """
+    input:
+        fasta = "results/{reftype}/reference//{ref}.fasta.gz"
+    output:
+        index = "results/{reftype}/reference/star/{ref}.idx"
+    log:
+        "results/logs/{reftype}/{ref}_star_index.log"
+    params:
+        genomedir = "results/{reftype}/reference/star/",
+        sjdbOverhang = int(samples[sample]["read_length"]) - 1 # read length -1
+    conda:
+        "envs/star.yml"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60 
+    threads: 1
+    shell:
+        """
+        exec &> {log}
+
+        ## get some parameter values from params and input files and use these to set
+        ## recommended optionparameter values for STAR options
+        genomelength=$(cat {input.fasta} | awk 'BEGIN{ret=0} !/\>/ {ret=ret+length($0)} END{print ret}')
+        nseqs=$(cat {input.fasta} | grep -c ">")
+        
+        # This should be min( 14, log2[ $genomelength ] / 2 - 1 )
+        genomeSAindexNbases = echo $genomelength| awk '{s = int(log($0)/2log(2) - 1); if(s>14){s=14}; print s}'
+
+        # This should be min( 18, log2[ max( $genomelength / $nseqs, {params.readlength} ) ] )
+        genomeChrBinNbits = echo $genomelength $nseqs {params.readlength} | \ 
+        awk '{ s = $1 / $2; if(s < $3){ s = $3 }; s = log(s) / log(2); if(s > 18){ s = 18 };print s }'
+
+        ## Start STAR
+        star \
+        --runMode genomeGenerate \
+        --genomeDir {output.index} \
+        --genomeFastaFiles{input.fasta} \
+        --runThreadN {threads} \
+        # Splice junction option
+        --sjdbGTFfile {input.gtf} \                        # Annotation file (for genome ref)
+        --sjdbOverhang {params.sjdbOverhang} \             # nbases to use for splice junction signature
+        --sjdbGTFfeatureExon exon \                        # What main feature to use from gff/gtf
+        --sjdbGTFtagExonParentTranscript Parent \          # Parent main feature field name gff3
+        #--sjdbFileChrStartEnd path/to/splicejunctionfile \ # Alternative Splice junction file (not used here)
+        # Options reducing computational load
+        --genomeSAindexNbases $genomeSAindexNbases \       # Very small genomes
+        --genomeChrBinNbits  $genomeChrBinNbits            # Very many individual sequences (e.g.,transcriptome)
+
+        echo "Done!"
+        """
+
+rule star_map:
+    input:
+        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
+        index = "reference/{reftype}/star/{ref}_transcripts.idx"
+    output:
+        bam = "results/star/{sample}/{ref}.{RNA}.Aligned.out.bam",
+        logout = "results/star/{sample}/{ref}.{RNA}.Log.out",
+        logfinal = "results/star/{sample}/{ref}.{RNA}.Log.final.out",
+    log:
+        "results/logs/kallisto/{sample}/{ref}.{RNA}.star_map.log"
+    params:
+        genomedir = "reference/genome/star/",
+        outprefix = "results/star/{sample}/{ref}.{RNA}"
+    threads: 8
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    conda:
+        "envs/star.yml"
+    shell:
+        """
+        exec &> {log}
+
+        star \
+        --genomeDir {params.genomedir} \
+        --readFilesIn {input.R1},{input.R2} \
+        --outFileNamePrefix {params.outprefix} \
+        #Adjustable in st_pipeline
+        --outFilterMultimapNmax 1 \   # option disable_multimap == True -> 1 (deafult 20) 
+        --runThreadN {threads} \      # option threads (default 8)
+        #--clip3pNbases 0 \            # option inverse_mapping_rv_trimming (default 0)
+        #--clip5pNbases 0 \            # option mapping_rv_trimming (default 0)
+        #--alignEndsType EndToEnd \    # option disable_clipping (default EndToEnd)
+        #--alignIntronMin 1 \          # option min_intron_size (default 1)
+        #--alignIntronMax 1 \          # option max_intron_size (default 20)
+        #--outFilterMatchNmin 20 \     # option min_length_trimming (default 20)
+        #--genomeLoad NoSharedMemory \ # option star_genome_loading (default NoSharedMemory)
+        #--limitBAMsortRAM 0 \         # option star_sort_mem_limit (default 0)
+        # Hardcoded by st_pipeline non-default STAR
+        --outSAMtype BAM SortedByCoordinate \   # (STAR default: SAM)
+        --outSAMmultNmax 1 \                    # (STAR default: -1)
+        --outMultimapperOrder Random \          # (STAR default: Old 2.4)
+        --outFilterMismatchNoverLmax 0.1 \      # (STAR default: 0.3)
+        --readFilesType SAM SE \                # (STAR default: SAM)
+        --readFilesCommand samtools view -h \   # (STAR default: Fastx)
+        # Hardcoded by st_pipeline default STAR
+        #--outFilterType Normal \
+        #--outSAMorder Paired \
+        #--outSAMprimaryFlag OneBestScore \
+        #--readMatesLengthsIn NotEqual \
+
+
+        echo "Done!"
+        """
+        
+        
 ##################
 ### ANNOTATION ###
 ##################
