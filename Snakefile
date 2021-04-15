@@ -421,6 +421,11 @@ rule kallisto_map_genome:
 
 rule star_index_genome:
     """
+    Creates a STAR index file from a gzipped fasta file with either:
+    - reference genome sequences, e.g., for chromosomes or contigs
+    - transcript sequences from a de novo transcriptome assembly or 
+      extracted from a reference genome (not yet implemented)
+    """
     input:
         fasta = "results/{reftype}/reference//{ref}.fasta.gz"
     output:
@@ -471,6 +476,9 @@ rule star_index_genome:
         """
 
 rule star_map:
+    """
+    Under construction
+    """
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
