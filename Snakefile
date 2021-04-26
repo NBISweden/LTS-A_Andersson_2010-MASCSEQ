@@ -455,7 +455,7 @@ rule star_index_genome:
         "results/logs/{reftype}/{ref}_star_index.log"
     params:
         genomedir = "results/{reftype}/reference/star/",
-        sjdbOverhang = int(samples[sample]["read_length"]) - 1 # read length -1
+        #sjdbOverhang = int(samples[sample]["read_length"]) - 1 # read length -1
     conda:
         "envs/star.yml"
     resources:
@@ -509,7 +509,7 @@ rule star_map:
         logout = "results/star/{sample}/{ref}.{RNA}.Log.out",
         logfinal = "results/star/{sample}/{ref}.{RNA}.Log.final.out",
     log:
-        "results/logs/kallisto/{sample}/{ref}.{RNA}.star_map.log"
+        "results/logs/star/{sample}/{ref}.{RNA}.star_map.log"
     params:
         genomedir = "reference/genome/star/",
         outprefix = "results/star/{sample}/{ref}.{RNA}"
@@ -559,24 +559,37 @@ rule star_map:
 ### ANNOTATION ###
 ##################
 
+rule transrate_install:
+    output:
+        "resources/transrate/done"
+    conda:
+        "envs/transrate.yml"
+    shell:
+        """
+        transrate --install-deps all > {output} 2>&1
+        """
+
 rule transrate:
     input:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-        fa=assembly_input
+        fa=assembly_input,
+        flag="resources/transrate/done"
     output:
         "results/transrate/{sample}/{assembler}.csv",
         directory("results/transrate/{sample}/{assembler}")
     params:
         outdir = "$TMPDIR/transrate-{sample}.{assembler}",
     threads: 10
+    log:
+        "results/logs/transrate/{sample}.{assembler}.log"
     conda:
         "envs/transrate.yml"
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         transrate --assembly {input.fa} --left {input.R1} --right {input.R2} \
-            --threads {threads} --output {params.outdir}
+            --threads {threads} --output {params.outdir} 2>{log}
         mv {params.outdir}/assemblies.csv {output[0]}
         mv {params.outdir}/merged {output[1]}
         """
