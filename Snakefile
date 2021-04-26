@@ -283,8 +283,8 @@ rule linkReferenceGenome:
     log:
         "results/logs/genome/reference/{ref}_linkReferenceGenome.log"
     params:
-        fastaout = prependWfd({output.fasta}),
-        gffout = prependWfd({output.gff})
+        fastaout = lambda wildcards, output: prependWfd(output.fasta),
+        gffout = lambda wildcards, output: prependWfd(output.gff)
     shell:
         """
         exec &> {log}        
