@@ -12,7 +12,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link*, download_rna, multiqc, extractTranscriptsFromGenome
+localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
 
 def kallisto_output(samples, config):
     files = []
@@ -278,7 +278,7 @@ rule linkReferenceGenome:
         fasta = lambda wc: config["genome"][wc.ref]["fasta"],
         gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta = "results/genome/reference/{ref}.fasta.gz"
+        fasta = "results/genome/reference/{ref}.fasta.gz",
         gff = "results/genome/reference/{ref}.gff"
     log:
         "results/logs/genome/reference/{ref}_linkReferenceGenome.log"
