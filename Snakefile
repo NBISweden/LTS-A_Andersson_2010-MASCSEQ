@@ -297,7 +297,7 @@ rule linkReferenceGenome:
         
 rule extractTranscriptsFromGenome:
     input:
-        fasta = "results/genome/reference/{ref}.fasta.gz"
+        fasta = "results/genome/reference/{ref}.fasta.gz",
         gff = "results/genome/reference/{ref}.gff"
     output:
         fasta = "results/transcriptome/reference/{ref}_transcriptsFromGenome.fasta.gz"
