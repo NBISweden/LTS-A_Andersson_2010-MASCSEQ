@@ -580,9 +580,11 @@ rule transrate:
         directory("results/transrate/{sample}/{assembler}")
     params:
         outdir = "$TMPDIR/transrate-{sample}.{assembler}",
-    threads: 10
+    threads: 20
     log:
         "results/logs/transrate/{sample}.{assembler}.log"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 6
     conda:
         "envs/transrate.yml"
     shell:
