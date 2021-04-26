@@ -2,7 +2,7 @@ import os
 from snakemake.utils import validate
 from src.common import read_samples, assembly_input
 
-include: "src/common.py"g
+include: "src/common.py"
 container: "docker://continuumio/miniconda3:4.9.2"
 configfile: prependWfd("config/config.yml")
 
