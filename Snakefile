@@ -12,7 +12,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome, transrate_install
+localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
 
 def kallisto_output(samples, config):
     files = []
@@ -558,43 +558,6 @@ rule star_map:
 ##################
 ### ANNOTATION ###
 ##################
-
-rule transrate_install:
-    output:
-        "resources/transrate/done"
-    conda:
-        "envs/transrate.yml"
-    shell:
-        """
-        transrate --install-deps all > {output} 2>&1
-        """
-
-rule transrate:
-    input:
-        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-        fa=assembly_input,
-        flag="resources/transrate/done"
-    output:
-        "results/transrate/{sample}/{assembler}.csv",
-        directory("results/transrate/{sample}/{assembler}")
-    params:
-        outdir = "$TMPDIR/transrate-{sample}.{assembler}",
-        resdir = lambda wildcards: {'trinity': 'Trinity', 'transabyss': 'merged'}[wildcards.assembler]
-    threads: 20
-    log:
-        "results/logs/transrate/{sample}.{assembler}.log"
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 6
-    conda:
-        "envs/transrate.yml"
-    shell:
-        """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
-        transrate --assembly {input.fa} --threads {threads} --output {params.outdir} > {log} 2>{log}
-        mv {params.outdir}/assemblies.csv {output[0]}
-        mv {params.outdir}/{params.resdir} {output[1]}
-        """
 
 rule dammit_busco:
     output:
