@@ -580,6 +580,7 @@ rule transrate:
         directory("results/transrate/{sample}/{assembler}")
     params:
         outdir = "$TMPDIR/transrate-{sample}.{assembler}",
+        resdir = lambda wildcards: {'trinity': 'Trinity', 'transabyss': 'merged'}[wildcards.assembler]
     threads: 20
     log:
         "results/logs/transrate/{sample}.{assembler}.log"
@@ -593,7 +594,7 @@ rule transrate:
         transrate --assembly {input.fa} --left {input.R1} --right {input.R2} \
             --threads {threads} --output {params.outdir} 2>{log}
         mv {params.outdir}/assemblies.csv {output[0]}
-        mv {params.outdir}/merged {output[1]}
+        mv {params.outdir}/{params.resdir} {output[1]}
         """
 
 rule dammit_busco:
