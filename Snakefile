@@ -592,7 +592,7 @@ rule transrate:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         transrate --assembly {input.fa} --left {input.R1} --right {input.R2} \
-            --threads {threads} --output {params.outdir} 2>{log}
+            --threads {threads} --output {params.outdir} > {log} 2>{log}
         mv {params.outdir}/assemblies.csv {output[0]}
         mv {params.outdir}/{params.resdir} {output[1]}
         """
