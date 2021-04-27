@@ -448,7 +448,7 @@ rule star_index_genome:
       extracted from a reference genome (not yet implemented)
     """
     input:
-        fasta = "results/{reftype}/reference//{ref}.fasta.gz"
+        fasta = "results/{reftype}/reference/{ref}.fasta.gz"
     output:
         index = "results/{reftype}/reference/star/{ref}.idx"
     log:
