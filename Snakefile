@@ -12,7 +12,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome
+localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome, dammit_busco
 
 def kallisto_output(samples, config):
     files = []
@@ -580,6 +580,8 @@ rule dammit:
         touch("results/dammit/{sample}/{assembler}/done")
     log:
         "results/logs/dammit/{sample}.{assembler}.log"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 4
     params:
         dbdir = "resources/dammit",
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
