@@ -553,8 +553,39 @@ rule star_map:
 
         echo "Done!"
         """
-        
-        
+
+###################
+### ASSEMBLY QC ###
+###################
+
+rule detonate:
+    input:
+        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+        fa = assembly_input
+    output:
+        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score",
+        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
+        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
+    log:
+        "results/logs/detonate/{sample}.{assembler}.log"
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[1]),
+        read_length = config["read_length"]
+    conda:
+        "envs/detonate.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+    shell:
+        """
+        rsem-eval-calculate-score {input.R1},{input.R2} {input.fa} \
+            {params.outdir}/{wildcards.sample} {params.read_length} -p {threads} >{log} 2>&1
+        """
+
 ##################
 ### ANNOTATION ###
 ##################
