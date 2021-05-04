@@ -1,7 +1,0 @@
-name: dammit
-channels:
-  - bioconda
-  - conda-forge
-  - defaults
-dependencies:
-  - dammit=1.2
