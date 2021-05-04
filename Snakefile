@@ -83,7 +83,7 @@ rule download_rna:
     sortmerna rule below.
     """
     output:
-        "resources/sortmerna/{db}.fasta"
+        "resources/sortmerna/{db}.fasta">
     params:
         url_base = "https://raw.githubusercontent.com/biocore/sortmerna/master/data/rRNA_databases/",
         basename = lambda wildcards, output: os.path.basename(output[0]),
@@ -596,28 +596,6 @@ rule star_map:
 ##################
 ### ANNOTATION ###
 ##################
-
-rule transrate:
-    input:
-        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-        fa=assembly_input
-    output:
-        "results/transrate/{sample}/{assembler}.csv",
-        directory("results/transrate/{sample}/{assembler}")
-    params:
-        outdir = "$TMPDIR/transrate-{sample}.{assembler}",
-    threads: 10
-    conda:
-        "envs/transrate.yml"
-    shell:
-        """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
-        transrate --assembly {input.fa} --left {input.R1} --right {input.R2} \
-            --threads {threads} --output {params.outdir}
-        mv {params.outdir}/assemblies.csv {output[0]}
-        mv {params.outdir}/merged {output[1]}
-        """
 
 rule dammit_busco:
     output:
