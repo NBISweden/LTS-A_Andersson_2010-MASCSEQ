@@ -1,3 +1,4 @@
+
 import os
 from snakemake.utils import validate
 from src.common import read_samples, assembly_input
@@ -12,7 +13,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, extractTranscriptsFromGenome, busco_dl, busco
+localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads, busco_dl, busco
 
 def kallisto_output(samples, config):
     files = []
@@ -90,7 +91,7 @@ rule download_rna:
     sortmerna rule below.
     """
     output:
-        "resources/sortmerna/{db}.fasta"
+        "resources/sortmerna/{db}.fasta">
     params:
         url_base = "https://raw.githubusercontent.com/biocore/sortmerna/master/data/rRNA_databases/",
         basename = lambda wildcards, output: os.path.basename(output[0]),
@@ -291,13 +292,13 @@ rule linkReferenceGenome:
     log:
         "results/logs/genome/reference/{ref}_linkReferenceGenome.log"
     params:
-        fastaout = lambda wildcards, output: prependWfd(output.fasta),
-        gffout = lambda wildcards, output: prependWfd(output.gff)
+        fasta = prependPwd("results/genome/reference/{ref}.fasta.gz"),
+        gff = prependPwd("results/genome/reference/{ref}.gff")
     shell:
         """
         exec &> {log}        
         
-        ln -s  {input.fasta} {params.gff}
+        ln -s  {input.fasta} {params.fasta}
         ln -s  {input.gff} {params.gff}
 
         """
@@ -448,6 +449,16 @@ rule kallisto_map_genome:
         echo "Done!"
         """
 
+rule gunzipReads:
+    output:
+        fastq = temp("results/{prefix}.fastq")
+    input:
+        fastq = "results/{prefix}.fastq.gz"
+    shell:
+        """
+        gunzip -c {input.fastq} > {output.fastq}
+        """
+
 rule star_index_genome:
     """
     Creates a STAR index file from a gzipped fasta file with either:
@@ -456,14 +467,15 @@ rule star_index_genome:
       extracted from a reference genome (not yet implemented)
     """
     input:
-        fasta = "results/{reftype}/reference/{ref}.fasta.gz"
+        fasta = "results/{reftype}/reference/{ref}.fasta.gz",
+        gff = "results/{reftype}/reference/{ref}.gff"
     output:
-        index = "results/{reftype}/reference/star/{ref}.idx"
+        index = directory("results/{reftype}/reference/star/{ref}.idx")
     log:
         "results/logs/{reftype}/{ref}_star_index.log"
     params:
         genomedir = "results/{reftype}/reference/star/",
-        #sjdbOverhang = int(samples[sample]["read_length"]) - 1 # read length -1
+        readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
     resources:
@@ -475,31 +487,38 @@ rule star_index_genome:
 
         ## get some parameter values from params and input files and use these to set
         ## recommended optionparameter values for STAR options
-        genomelength=$(cat {input.fasta} | awk 'BEGIN{ret=0} !/\>/ {ret=ret+length($0)} END{print ret}')
+        sjdbOverhang=100 # avoid error unbound var; actually set below
+        let sjdbOverhang={params.readlength}-1
+
+        genomelength=$( cat {input.fasta} | \
+           awk 'BEGIN{{ret=0}} !/>/ {{ret=ret+length($0)}} END{{print ret}}' )
+
         nseqs=$(cat {input.fasta} | grep -c ">")
         
         # This should be min( 14, log2[ $genomelength ] / 2 - 1 )
-        genomeSAindexNbases = echo $genomelength| awk '{s = int(log($0)/2log(2) - 1); if(s>14){s=14}; print s}'
+        genomeSAindexNbases=$( echo $genomelength| \
+           awk '{{ s = int(log($1)/2log(2) - 1); if(s>14){{ s=14 }}; print s }}' )
 
         # This should be min( 18, log2[ max( $genomelength / $nseqs, {params.readlength} ) ] )
-        genomeChrBinNbits = echo $genomelength $nseqs {params.readlength} | \ 
-        awk '{ s = $1 / $2; if(s < $3){ s = $3 }; s = log(s) / log(2); if(s > 18){ s = 18 };print s }'
+        genomeChrBinNbits=$( echo $genomelength $nseqs {params.readlength} | awk \
+                             '{{ s = $1 / $2; if(s < $3){{ s = $3 }}; s = log(s) / log(2); \
+                              if(s > 18){{ s = 18 }};print s }}' )
 
-        ## Start STAR
-        star \
+        ## Start STAR, backticks are used to allow comments in multi-line bash command
+        STAR \
         --runMode genomeGenerate \
         --genomeDir {output.index} \
-        --genomeFastaFiles{input.fasta} \
+        --genomeFastaFiles {input.fasta} \
         --runThreadN {threads} \
-        # Splice junction option
-        --sjdbGTFfile {input.gtf} \                        # Annotation file (for genome ref)
-        --sjdbOverhang {params.sjdbOverhang} \             # nbases to use for splice junction signature
-        --sjdbGTFfeatureExon exon \                        # What main feature to use from gff/gtf
-        --sjdbGTFtagExonParentTranscript Parent \          # Parent main feature field name gff3
-        #--sjdbFileChrStartEnd path/to/splicejunctionfile \ # Alternative Splice junction file (not used here)
-        # Options reducing computational load
-        --genomeSAindexNbases $genomeSAindexNbases \       # Very small genomes
-        --genomeChrBinNbits  $genomeChrBinNbits            # Very many individual sequences (e.g.,transcriptome)
+        `# Splice junction option` \
+        --sjdbGTFfile {input.gff}                         `# Annotation file (for genome ref)` \
+        --sjdbOverhang $sjdbOverhang                      `# nbases to use for splice junction signature` \
+        --sjdbGTFfeatureExon exon                         `# What main feature to use from gff/gtf` \
+        --sjdbGTFtagExonParentTranscript Parent           `# Parent main feature field name gff3` \
+        `#--sjdbFileChrStartEnd path/to/splicejunctionfile  # Alternative Splice junction file (not used here)` \
+        `# Options reducing computational load` \
+        --genomeSAindexNbases $genomeSAindexNbases        `# Very small genomes` \
+        --genomeChrBinNbits  $genomeChrBinNbits            `# Very many individual sequences (e.g.,transcriptome)`
 
         echo "Done!"
         """
@@ -509,56 +528,75 @@ rule star_map:
     Under construction
     """
     input:
-        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
-        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
-        index = "reference/{reftype}/star/{ref}_transcripts.idx"
+        R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq",
+        R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq",
+        index = "results/{reftype}/reference/star/{ref}.idx"
     output:
-        bam = "results/star/{sample}/{ref}.{RNA}.Aligned.out.bam",
-        logout = "results/star/{sample}/{ref}.{RNA}.Log.out",
-        logfinal = "results/star/{sample}/{ref}.{RNA}.Log.final.out",
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
+#        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
+        logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.final.out",
+        SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.SJ.out.tab",
     log:
-        "results/logs/star/{sample}/{ref}.{RNA}.star_map.log"
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
     params:
-        genomedir = "reference/genome/star/",
-        outprefix = "results/star/{sample}/{ref}.{RNA}"
+        outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}."
     threads: 8
     resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+        runtime = lambda wildcards, attempt: attempt ** 2 * 360
     conda:
         "envs/star.yml"
     shell:
         """
         exec &> {log}
-
-        star \
-        --genomeDir {params.genomedir} \
+        
+        STAR \
+        --genomeDir {input.index} \
         --readFilesIn {input.R1},{input.R2} \
         --outFileNamePrefix {params.outprefix} \
-        #Adjustable in st_pipeline
-        --outFilterMultimapNmax 1 \   # option disable_multimap == True -> 1 (deafult 20) 
-        --runThreadN {threads} \      # option threads (default 8)
-        #--clip3pNbases 0 \            # option inverse_mapping_rv_trimming (default 0)
-        #--clip5pNbases 0 \            # option mapping_rv_trimming (default 0)
-        #--alignEndsType EndToEnd \    # option disable_clipping (default EndToEnd)
-        #--alignIntronMin 1 \          # option min_intron_size (default 1)
-        #--alignIntronMax 1 \          # option max_intron_size (default 20)
-        #--outFilterMatchNmin 20 \     # option min_length_trimming (default 20)
-        #--genomeLoad NoSharedMemory \ # option star_genome_loading (default NoSharedMemory)
-        #--limitBAMsortRAM 0 \         # option star_sort_mem_limit (default 0)
-        # Hardcoded by st_pipeline non-default STAR
-        --outSAMtype BAM SortedByCoordinate \   # (STAR default: SAM)
-        --outSAMmultNmax 1 \                    # (STAR default: -1)
-        --outMultimapperOrder Random \          # (STAR default: Old 2.4)
-        --outFilterMismatchNoverLmax 0.1 \      # (STAR default: 0.3)
-        --readFilesType SAM SE \                # (STAR default: SAM)
-        --readFilesCommand samtools view -h \   # (STAR default: Fastx)
-        # Hardcoded by st_pipeline default STAR
-        #--outFilterType Normal \
-        #--outSAMorder Paired \
-        #--outSAMprimaryFlag OneBestScore \
-        #--readMatesLengthsIn NotEqual \
+        --outFilterMultimapNmax 1 \
+        --runThreadN {threads} \
+        --outSAMtype BAM SortedByCoordinate \
+        --outSAMmultNmax 1 \
+        --outMultimapperOrder Random \
+        --outFilterMismatchNoverLmax 0.1 \
+        --readFilesType Fastx \
+        --limitBAMsortRAM 3826372101
+
+        # STAR \
+        # --genomeDir {input.index} \
+        # --readFilesIn {input.R1},{input.R2} \
+        # --outFileNamePrefix {params.outprefix} \
+        # `#Adjustable in st_pipeline` \
+        # --outFilterMultimapNmax 1    `# option disable_multimap == True -> 1 (deafult 20)` \
+        # --runThreadN {threads}       `# option threads (default 8)` \
+        # `#--clip3pNbases 0             # option inverse_mapping_rv_trimming (default 0)` \
+        # `#--clip5pNbases 0             # option mapping_rv_trimming (default 0)` \
+        # `#--alignEndsType EndToEnd     # option disable_clipping (default EndToEnd)` \
+        # `#--alignIntronMin 1           # option min_intron_size (default 1)` \
+        # `#--alignIntronMax 1           # option max_intron_size (default 20)` \
+        # `#--outFilterMatchNmin 20      # option min_length_trimming (default 20)` \
+        # `#--genomeLoad NoSharedMemory  # option star_genome_loading (default NoSharedMemory)` \
+        # `#--limitBAMsortRAM 0          # option star_sort_mem_limit (default 0)` \
+        # `# Hardcoded by st_pipeline non-default STAR` \
+        # --outSAMtype BAM SortedByCoordinate `# (STAR default: SAM)` \
+        # --outSAMmultNmax 1                  `# (STAR default: -1)` \
+        # --outMultimapperOrder Random        `# (STAR default: Old 2.4)` \
+        # --outFilterMismatchNoverLmax 0.1    `# (STAR default: 0.3)` \
+        # --readFilesType Fastx               `# (st default: SAM SE) (STAR default: fastx)` \
+        # --readFilesCommand -                `# (st default: samtools view -h)` 
+        # #for debugging
+        # # --readMapNumber 1 
+        # # Hardcoded by st_pipeline default STAR
+        # #--outFilterType Normal \
+        # #--outSAMorder Paired \
+        # #--outSAMprimaryFlag OneBestScore \
+        # #--readMatesLengthsIn NotEqual \
+        # #--limitBAMsortRAM 3826372101 `# max avail RAM for BAM sorting (STAR default 0)
 
 
+        ls {params.outprefix}*
+#        rm -f *.sam
+#        rm -f *.progress.out
         echo "Done!"
         """
         
