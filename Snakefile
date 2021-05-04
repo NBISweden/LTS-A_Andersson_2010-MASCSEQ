@@ -83,7 +83,7 @@ rule download_rna:
     sortmerna rule below.
     """
     output:
-        "resources/sortmerna/{db}.fasta">
+        "resources/sortmerna/{db}.fasta"
     params:
         url_base = "https://raw.githubusercontent.com/biocore/sortmerna/master/data/rRNA_databases/",
         basename = lambda wildcards, output: os.path.basename(output[0]),
@@ -636,3 +636,35 @@ rule dammit:
             --quick --verbosity 2 > {log} 2>&1
         mv {params.tmpdir}/* {params.outdir}
         """
+
+def genetic_code(wildcards):
+    try:
+        return config["transdecode"]["genetic_codes"][wildcards.sample]
+    except KeyError:
+        return "universal"
+
+rule transdecoder_longorfs:
+    input:
+        assembly_input
+    params:
+        gencode = lambda wildcards: genetic_code(wildcards),
+        tmpdir = "$TMPDIR/{assembler}.{sample}",
+        outdir = lambda wildcards, output: os.path.dirname(output[0])
+    output:
+        expand("results/transdecoder/{{assembler}}/{{sample}}/{f}",
+            f = ["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3", "longest_orfs.pep"])
+    log: "results/logs/transdecoder/{assembler}.{sample}.log"
+    conda: "envs/transdecoder.yml"
+    shell:
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
+        TransDecoder.LongOrfs -G {params.gencode} -O {params.tmpdir} -t {input} > {log} 2>&1
+        mv {params.tmpdir}/* {params.outdir}
+        """
+
+rule transdecoder_predict:
+    input:
+        expand("results/transdecoder/{{assembler}}/{{sample}}/{f}",
+            f=["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3",
+               "longest_orfs.pep"])
