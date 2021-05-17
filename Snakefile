@@ -204,16 +204,21 @@ rule transabyss:
         "envs/transabyss.yml"
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
-        tmpdir = "$TMPDIR/{sample}.transabyss"
+        tmpdir = "$TMPDIR/{sample}.transabyss",
+        R1 = "$TMPDIR/{sample}.transabyss/R1",
+        R2 = "$TMPDIR/{sample}.transabyss/R2"
     threads: config["transabyss"]["threads"]
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
-        transabyss --pe {input.R1} {input.R2} -k {wildcards.k} \
+        gunzip -c {input.R1} > {params.R1}
+        gunzip -c {input.R2} > {params.R2}
+        transabyss --pe {params.R1} {params.R2} -k {wildcards.k} \
             --outdir {params.tmpdir} --name {wildcards.sample}.{wildcards.k} \
             --threads {threads} >{log} 2>&1
+        rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}
         """
 
@@ -258,14 +263,19 @@ rule trinity:
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
         tmpdir = "$TMPDIR/{sample}.trinity",
-        cpumem = config["mem_per_cpu"]
+        cpumem = config["mem_per_cpu"],
+        R1 = "$TMPDIR/{sample}.trinity/R1",
+        R2 = "$TMPDIR/{sample}.trinity/R2"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        gunzip -c {input.R1} > {params.R1}
+        gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}/
         """
 
@@ -597,74 +607,61 @@ rule star_map:
 ### ANNOTATION ###
 ##################
 
-rule dammit_busco:
-    output:
-        directory("resources/dammit/busco2db/{busco_group}_ensembl"),
-        touch("resources/dammit/busco2db/download_and_untar:busco2db-{busco_group}.done")
-    params:
-        tmpdir = "$TMPDIR/dammit/{busco_group}"
-    shell:
-        """
-        mkdir -p {params.tmpdir}
-        curl -L https://busco.ezlab.org/v2/datasets/{wildcards.busco_group}_ensembl.tar.gz | tar -xz -C {params.tmpdir}
-        mv {params.tmpdir}/* {output[0]} 
-        """
-
-rule dammit:
-    input:
-        assembly_input,
-        lambda wildcards: f"resources/dammit/busco2db/download_and_untar:busco2db-{config['dammit']['busco_group'][wildcards.sample]}.done"
-    output:
-        touch("results/dammit/{sample}/{assembler}/done")
-    log:
-        "results/logs/dammit/{sample}.{assembler}.log"
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 4
-    params:
-        dbdir = "resources/dammit",
-        outdir = lambda wildcards, output: os.path.dirname(output[0]),
-        busco_group = lambda wildcards: config["dammit"]["busco_group"][wildcards.sample],
-        tmpdir = "$TMPDIR/dammit/{sample}.{assembler}"
-    conda:
-        "envs/dammit.yml"
-    threads: 10
-    shell:
-        """
-        dammit annotate {input[0]} -n {wildcards.sample}.{wildcards.assembler} \
-            --n_threads {threads} --database-dir {params.dbdir} \
-            -o {params.tmpdir} --force --busco-group {params.busco_group} \
-            --quick --verbosity 2 > {log} 2>&1
-        mv {params.tmpdir}/* {params.outdir}
-        """
-
 def genetic_code(wildcards):
     try:
         return config["transdecode"]["genetic_codes"][wildcards.sample]
     except KeyError:
-        return "universal"
+        return "Universal"
 
 rule transdecoder_longorfs:
     input:
         assembly_input
-    params:
-        gencode = lambda wildcards: genetic_code(wildcards),
-        tmpdir = "$TMPDIR/{assembler}.{sample}",
-        outdir = lambda wildcards, output: os.path.dirname(output[0])
     output:
         expand("results/transdecoder/{{assembler}}/{{sample}}/{f}",
-            f = ["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3", "longest_orfs.pep"])
-    log: "results/logs/transdecoder/{assembler}.{sample}.log"
+            f = ["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3", "longest_orfs.pep"]),
+    params:
+        gencode=lambda wildcards: genetic_code(wildcards),
+        tmpdir="$TMPDIR/{assembler}.{sample}",
+        ln="$TMPDIR/{assembler}.{sample}/{sample}",
+        fa=lambda wildcards, input: os.path.abspath(input[0]),
+        outdir=lambda wildcards, output: os.path.dirname(output[0])
+    log: "results/logs/transdecoder/{assembler}.{sample}.longorfs.log"
     conda: "envs/transdecoder.yml"
+    shadow: "full"
     shell:
         """
+        exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         mkdir -p {params.tmpdir}
-        TransDecoder.LongOrfs -G {params.gencode} -O {params.tmpdir} -t {input} > {log} 2>&1
-        mv {params.tmpdir}/* {params.outdir}
+        ln -s {params.fa} {params.ln}
+        TransDecoder.LongOrfs -G {params.gencode} -O {params.outdir} -t {params.ln}
+        rm -rf {params.tmpdir}
         """
 
 rule transdecoder_predict:
     input:
+        assembly_input,
         expand("results/transdecoder/{{assembler}}/{{sample}}/{f}",
-            f=["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3",
-               "longest_orfs.pep"])
+            f=["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3", "longest_orfs.pep"])
+    output:
+        expand("results/transdecoder/{{assembler}}/{{sample}}/{{sample}}.transdecoder.{suffix}",
+            suffix=["bed", "cds", "gff3", "pep"])
+    params:
+        gencode=lambda wildcards: genetic_code(wildcards),
+        tmpdir="$TMPDIR/{assembler}.{sample}",
+        ln="$TMPDIR/{assembler}.{sample}/{sample}",
+        fa=lambda wildcards, input: os.path.abspath(input[0]),
+        outdir=lambda wildcards, output: os.path.dirname(output[0])
+    log: "results/logs/transdecoder/{assembler}.{sample}.predict.log"
+    conda: "envs/transdecoder.yml"
+    shadow: "full"
+    shell:
+        """
+        exec &> {log}
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
+        ln -s {params.fa} {params.ln}
+        TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
+        mv {wildcards.sample}.transdecoder* {params.outdir}
+        rm -r {params.tmpdir}
+        """
