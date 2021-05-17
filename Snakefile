@@ -15,7 +15,7 @@ wildcard_constraints:
 
 localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads
 
-# def kallisto_output(samples, config):
+# def kallisto_output(samples, config): # Needs to be updated
 #     files = []
 #     for sample, vals in samples.items():
 #         t = samples[sample]["type"]
@@ -275,6 +275,7 @@ rule trinity:
 ###############
 
 rule linkReferenceGenome:
+    """ Softlink external reference genome files """
     input:
         fasta = lambda wc: config["genome"][wc.ref]["fasta"],
         gff = lambda wc: config["genome"][wc.ref]["gff"]
@@ -296,6 +297,8 @@ rule linkReferenceGenome:
         """
 
 rule extractTranscriptomeFromGenome:
+    """ Create a transcripåtome (fatsa files with transcript sequences
+    from reference genome fasta and gff files. """
     input:
         fasta = "resources/genome/{ref}.fasta.gz",
         gff = "resources/genome/{ref}.gff"
@@ -318,7 +321,15 @@ rule extractTranscriptomeFromGenome:
         echo "Done!"
         """
 
+# Mapping with kallisto
+#   - works only with transcriptome reference files
+#   - handles multimappers
+#   - uses hashed pseudo-alignment approach (fast)
+#   - outputs read abundance/counts directly (no extra program)
+###############################################################    
 rule kallisto_index:
+    """ Create an index for kallisto from a transcriptome (fasta file 
+    with transcript sequences). """
     input:
         fasta = "resources/{reftype, transcriptome.*}/{ref}.fasta.gz"
     output:
@@ -342,6 +353,8 @@ rule kallisto_index:
         """
 
 rule kallisto_map:
+    """ Map PE RNAseq reads to indexed transcriptome using kallisto.
+    result in read abundance/counts output."""
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
@@ -377,7 +390,17 @@ rule kallisto_map:
         echo "Done!"
         """
 
+# Mapping with kallistoSTAR
+#   - works with either transcriptome reference files
+#     or genome fasta+ gff
+#   - no or rudimentary handling of multimappers
+#   - full alignment approach (slow)
+#   - (the mapper used in ST-pipeline)
+#   - require external read abundance/counts estimation
+#######################################################   
 rule gunzipReads:
+    """ Mainly included because STAR (contrary to what is said in 
+    manual) cannot handle gzipped input files. """
     output:
         fastq = temp("results/{prefix}.fastq")
     input:
@@ -388,12 +411,9 @@ rule gunzipReads:
         """
         
 rule star_index_transcriptome:
-    """
-    Creates a STAR index file from a gzipped fasta file with either:
-    - reference genome sequences, e.g., for chromosomes or contigs
-    - transcript sequences from a de novo transcriptome assembly or 
-      extracted from a reference genome (not yet implemented)
-    """
+    """Creates a STAR index file from a gzipped fasta file of transcript sequences 
+    from a de novo transcriptome assembly or extracted from a reference genome.
+    STAR options are selected to align with those in ST-pipeline."""
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
     output:
@@ -449,12 +469,9 @@ rule star_index_transcriptome:
         """
 
 rule star_index_genome:
-    """
-    Creates a STAR index file from a gzipped fasta file with either:
-    - reference genome sequences, e.g., for chromosomes or contigs
-    - transcript sequences from a de novo transcriptome assembly or 
-      extracted from a reference genome (not yet implemented)
-    """
+    """Creates a STAR index file from a gzipped fasta file with reference genome sequences, 
+    e.g., for chromosomes or contigs and a gff file with the annotation of this genome.
+    STAR options are selected to align with those in ST-pipeline."""
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz",
         gff = "resources/{reftype}/{ref}.gff"
@@ -513,9 +530,9 @@ rule star_index_genome:
         """
 
 rule star_map:
-    """
-    Under construction
-    """
+    """ Map PE RNAseq reads to indexed transcriptome or genome using STAR.
+    No estimation of read abundance/couots is deon in this step.
+    STAR options are selected to align with those in ST-pipeline."""
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq",
@@ -551,7 +568,7 @@ rule star_map:
         --limitBAMsortRAM 3826372101
 
         ##
-        # STAR options \
+        # STAR options explained\
         # --genomeDir {input.index} \
         # --readFilesIn {input.R1},{input.R2} \
         # --outFileNamePrefix {params.outprefix} \
