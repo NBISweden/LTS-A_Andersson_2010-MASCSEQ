@@ -628,6 +628,8 @@ rule transdecoder_longorfs:
     log: "results/logs/transdecoder/{assembler}.{sample}.longorfs.log"
     conda: "envs/transdecoder.yml"
     shadow: "full"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
         exec &> {log}
@@ -655,6 +657,8 @@ rule transdecoder_predict:
     log: "results/logs/transdecoder/{assembler}.{sample}.predict.log"
     conda: "envs/transdecoder.yml"
     shadow: "full"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
         exec &> {log}
