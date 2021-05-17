@@ -622,6 +622,8 @@ rule dammit:
         touch("results/dammit/{sample}/{assembler}/done")
     log:
         "results/logs/dammit/{sample}.{assembler}.log"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 4
     params:
         dbdir = "resources/dammit",
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
