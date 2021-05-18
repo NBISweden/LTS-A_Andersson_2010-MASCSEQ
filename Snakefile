@@ -461,7 +461,7 @@ rule star_index_transcriptome:
         # This should be min( 18, log2[ max( $genomelength / $nseqs, {params.readlength} ) ] )
         genomeChrBinNbits=$( echo $genomelength $nseqs {params.readlength} | awk \
                              '{{ s = $1 / $2; if(s < $3){{ s = $3 }}; s = log(s) / log(2); \
-                              if(s > 18){{ s = 18 }};print s }}' )        
+                              if(s > 18){{ s = 18 }};print s }}' )
 
         ## Start STAR, backticks are used to allow comments in multi-line bash command
         STAR \
@@ -632,10 +632,10 @@ rule star_map:
 
 ###################
 ### READ COUNTS ###
-###################        
+###################
 
 rule htseq:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
         gff = "resources/{reftype}/{ref}.gff"
     output:
@@ -661,6 +661,39 @@ rule htseq:
         )" | python3
         """
         
+
+###################
+### ASSEMBLY QC ###
+###################
+rule detonate:
+    input:
+        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+        fa = assembly_input
+    output:
+        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score",
+        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
+        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
+    log:
+        "results/logs/detonate/{sample}.{assembler}.log"
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[1]),
+        read_length = config["read_length"]
+    conda:
+        "envs/detonate.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+    shell:
+        """
+        rsem-eval-calculate-score {input.R1},{input.R2} {input.fa} \
+            {params.outdir}/{wildcards.sample} {params.read_length} -p {threads} >{log} 2>&1
+        """
+
+
 ##################
 ### ANNOTATION ###
 ##################
