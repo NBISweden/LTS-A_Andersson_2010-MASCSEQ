@@ -1,5 +1,6 @@
 sample_list: "config/samples.csv"
 mem_per_cpu: 6
+read_length: 150
 assemblers:
   - "trinity"
   - "transabyss"
