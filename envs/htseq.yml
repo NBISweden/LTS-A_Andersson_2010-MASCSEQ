@@ -1,0 +1,8 @@
+name: htseq
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - htseq
+  - pysam
