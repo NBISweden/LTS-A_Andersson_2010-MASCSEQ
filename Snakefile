@@ -1,4 +1,3 @@
-
 import os
 from snakemake.utils import validate
 from src.common import read_samples, assembly_input
@@ -331,9 +330,9 @@ rule kallisto_index:
     """ Create an index for kallisto from a transcriptome (fasta file 
     with transcript sequences). """
     input:
-        fasta = "resources/{reftype, transcriptome.*}/{ref}.fasta.gz"
+        fasta = "resources/{reftype}/{ref}.fasta.gz"
     output:
-        index = "resources/{reftype}/kallisto/{ref}.idx"
+        index = "resources/{reftype, transcriptome.*}/kallisto/{ref}.idx"
     log:
         "resources/logs/{reftype}/kallisto/{ref}_kallisto_index.log"
     conda:
@@ -561,7 +560,7 @@ rule star_map:
         --outFilterMultimapNmax 1 \
         --runThreadN {threads} \
         --outSAMtype BAM SortedByCoordinate \
-        --outSAMmultNmax 1 \
+        --outSAMmultNmax -1 \
         --outMultimapperOrder Random \
         --outFilterMismatchNoverLmax 0.1 \
         --readFilesType Fastx \
@@ -585,8 +584,8 @@ rule star_map:
         # `#--limitBAMsortRAM 0          # option star_sort_mem_limit (default 0)` \
         # `# Hardcoded by st_pipeline non-default STAR` \
         # --outSAMtype BAM SortedByCoordinate `# (STAR default: SAM)` \
-        # --outSAMmultNmax 1                  `# (STAR default: -1)` \
-        # --outMultimapperOrder Random        `# (STAR default: Old 2.4)` \
+        # --outSAMmultNmax 1                  `# (st default: 1 one multimapper alignment reported; STAR default: -1=all multimappers reported)` \
+        # --outMultimapperOrder Random        `# (STAR default: Old 2.4)` pick best alignemnt by random\
         # --outFilterMismatchNoverLmax 0.1    `# (STAR default: 0.3)` \
         # --readFilesType Fastx               `# (st default: SAM SE) (STAR default: fastx)` \
         # `#--readFilesCommand -                # (st default: samtools view -h)` \
@@ -612,7 +611,32 @@ rule star_map:
 ### READ COUNTS ###
 ###################        
 
-        
+rule htseq:
+    input: 
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
+        gff = "resources/{reftype}/{ref}.gff"
+    output:
+        bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
+        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
+    params:
+        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
+    conda:
+        "envs/htseq.yml"
+    shell:
+        """
+        echo -e "
+        from src.htseq import *
+        annotateReads(
+            {input.bam},
+            {input.gff},
+            {output.bam},
+            {output.discarded},
+            "intersection-nonempty", # st-option: htseq_mode (union/intersection-strict/intersection-nonempty*) [!= multimappers]
+            {params.strandedness},     # st-option: strandness (yes*[=forward]/no/reverse)
+            False,                   # st-option: htseq_no_ambiguous (True/False*) discard htseqs ambiguous annotations
+            False                    # st-option: include_non_annotated (True/False*) include unannotated reads as '_nofeature'
+        )" | python3
+        """
         
 ##################
 ### ANNOTATION ###
