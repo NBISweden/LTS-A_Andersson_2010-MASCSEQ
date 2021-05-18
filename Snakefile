@@ -1,4 +1,3 @@
-
 import os
 from snakemake.utils import validate
 from src.common import read_samples, assembly_input
@@ -13,7 +12,24 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads
+localrules:
+    all,
+    link,
+    download_rna,
+    multiqc,
+    linkReferenceGenome,
+    extractTranscriptsFromGenome,
+    gunzipReads,
+    busco_dl,
+    busco
+
+def busco_input(samples, config):
+    files = []
+    for sample, lineage in config["busco"]["sample_lineages"].items():
+        if samples[sample]["type"] == "transcriptome":
+            for assembler in config["assemblers"]:
+                files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+    return files
 
 def kallisto_output(samples, config):
     files = []
@@ -26,11 +42,19 @@ def kallisto_output(samples, config):
             files+=[f"results/kallisto/{sample}/{assembler}.mRNA.abundance.tsv" for assembler in config["assemblers"]]
     return files
 
+def busco_input(samples, config):
+    files = []
+    for sample, lineage in config["busco"]["sample_lineages"].items():
+        if samples[sample]["type"] == "transcriptome":
+            for assembler in config["assemblers"]:
+                files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+    return files
+
 rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
-        kallisto_output(samples, config)
+        #kallisto_output(samples, config)
 
 #####################
 ### PREPROCESSING ###
@@ -329,40 +353,24 @@ rule extractTranscriptsFromGenome:
         echo "Done!"
         """
 
-rule kallisto_index_asm:
+# Mapping with kallisto
+#   - works only with transcriptome reference files
+#   - handles multimappers
+#   - uses hashed pseudo-alignment approach (fast)
+#   - outputs read abundance/counts directly (no extra program)
+###############################################################
+rule kallisto_index:
+    """ Create an index for kallisto from a transcriptome (fasta file
+    with transcript sequences). """
     """
     Index an assembly for kallisto mapping
     """
     input:
-        fasta = assembly_input
+        fasta = "resources/{reftype}/{ref}.fasta.gz"
     output:
-        index = "results/kallisto/{sample}/{assembler}_transcripts.idx"
+        index = "resources/{reftype, transcriptome.*}/kallisto/{ref}.idx"
     log:
-        "results/logs/kallisto/{sample}/{assembler}.index.log"
-    conda:
-        "envs/kallisto.yml"
-    resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60
-    threads: 20
-    shell:
-        """
-        exec &> {log}
-
-        kallisto index \
-        -i {output.index} \
-        {input.fasta} 
-
-        echo "Done!"
-        """
-
-
-rule kallisto_index_genome:
-    input:
-        fasta = "reference/genome/{ref}_transcriptsFromGenome.fasta.gz"
-    output:
-        index = "reference/genome/{ref}_transcripts.idx"
-    log:
-        "reference/logs/genome/{ref}_kallisto_index.log"
+        "resources/logs/{reftype}/kallisto/{ref}.index.log"
     conda:
         "envs/kallisto.yml"
     resources:
@@ -379,58 +387,24 @@ rule kallisto_index_genome:
         echo "Done!"
         """
 
-rule kallisto_map_asm:
-    input:
-        R1="results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
-        R2="results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
-        index="results/kallisto/{sample}/{assembler}_transcripts.idx"
-    output:
-        tsv = "results/kallisto/{sample}/{assembler}.{RNA}.abundance.tsv",
-        h5 = "results/kallisto/{sample}/{assembler}.{RNA}.abundance.h5",
-        info = "results/kallisto/{sample}/{assembler}.{RNA}.run_info.json"
-    log:
-        "results/logs/kallisto/{sample}/{assembler}.{RNA}.kallisto_map.log"
-    params:
-        out = "$TMPDIR/{sample}.{assembler}.{RNA}"
-    threads: 10
-    resources:
-        runtime= lambda wildcards,attempt: attempt ** 2 * 60
-    conda:
-        "envs/kallisto.yml"
-    shell:
-        """
-        exec &> {log}
-
-        kallisto quant \
-        -i {input.index} \
-        -o {params.out} \
-        -t {threads} \
-        {input.R1} {input.R2}
-
-        # Change to informative file names
-        mv {params.out}/abundance.tsv {output.tsv}
-        mv {params.out}/abundance.h5 {output.h5}
-        mv {params.out}/run_info.json {output.info}
-
-        echo "Done!"
-        """
-
-rule kallisto_map_genome:
+rule kallisto_map:
+    """ Map PE RNAseq reads to indexed transcriptome using kallisto.
+    result in read abundance/counts output."""
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
-        index = "reference/genome/{ref}_transcripts.idx"
+        index = "resources/{reftype}/kallisto/{ref}.idx"
     output:
-        tsv = "results/kallisto/{sample}/{ref}.{RNA}.abundance.tsv",
-        h5 = "results/kallisto/{sample}/{ref}.{RNA}.abundance.h5",
-        info = "results/kallisto/{sample}/{ref}.{RNA}.run_info.json"
+        tsv = "results/{reftype, transcriptome.*}/kallisto/{ref}/{sample}.{RNA}.abundance.tsv",
+        h5 = "results/{reftype}/kallisto/{ref}/{sample}.{RNA}.abundance.h5",
+        info = "results/{reftype}/kallisto/{ref}/{sample}.{RNA}.run_info.json"
     log:
-        "results/logs/kallisto/{sample}/{ref}.{RNA}.kallisto_map.log"
+        "results/logs/{reftype}/kallisto/{ref}/{sample}.{RNA}.kallisto_map.log"
     params:
-        out = "$TMPDIR/{sample}.{ref}.{RNA}"
+        out = "$TMPDIR/{ref}.{sample}.{RNA}"
     threads: 10
     resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+        runtime = lambda wildcards,attempt: attempt ** 2 * 60
     conda:
         "envs/kallisto.yml"
     shell:
@@ -451,16 +425,57 @@ rule kallisto_map_genome:
         echo "Done!"
         """
 
-rule gunzipReads:
-    output:
-        fastq = temp("results/{prefix}.fastq")
+rule star_index_transcriptome:
+    """Creates a STAR index file from a gzipped fasta file of transcript sequences
+    from a de novo transcriptome assembly or extracted from a reference genome.
+    STAR options are selected to align with those in ST-pipeline."""
     input:
-        fastq = "results/{prefix}.fastq.gz"
+        fasta = "resources/{reftype}/{ref}.fasta.gz"
+    output:
+        index = directory("resources/{reftype, transcriptome.*}/star/{ref}.idx")
+    log:
+        "resources/logs/{reftype}/star/{ref}_star_index.log"
+    params:
+        genomedir = "resources/{reftype}/star/",
+        readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
+    conda:
+        "envs/star.yml"
     shell:
         """
-        gunzip -c {input.fastq} > {output.fastq}
+        exec &> {log}
+
+        ## get some parameter values from params and input files and use these to set
+        ## recommended optionparameter values for STAR options
+        sjdbOverhang=100 # avoid error unbound var; actually set below
+        let sjdbOverhang={params.readlength}-1
+
+        genomelength=$( cat {input.fasta} | \
+           awk 'BEGIN{{ret=0}} !/>/ {{ret=ret+length($0)}} END{{print ret}}' )
+
+        nseqs=$(cat {input.fasta} | grep -c ">")
+
+        # This should be min( 14, log2[ $genomelength ] / 2 - 1 )
+        genomeSAindexNbases=$( echo $genomelength| \
+           awk '{{ s = int(log($1)/2log(2) - 1); if(s>14){{ s=14 }}; print s }}' )
+
+        # This should be min( 18, log2[ max( $genomelength / $nseqs, {params.readlength} ) ] )
+        genomeChrBinNbits=$( echo $genomelength $nseqs {params.readlength} | awk \
+                             '{{ s = $1 / $2; if(s < $3){{ s = $3 }}; s = log(s) / log(2); \
+                              if(s > 18){{ s = 18 }};print s }}' )        
+
+        ## Start STAR, backticks are used to allow comments in multi-line bash command
+        STAR \
+        --runMode genomeGenerate \
+        --genomeDir {output.index} \
+        --genomeFastaFiles {input.fasta} \
+        --runThreadN {threads} \
+        `# Options reducing computational load` \
+        --genomeSAindexNbases $genomeSAindexNbases        `# Very small genomes` \
+        --genomeChrBinNbits  $genomeChrBinNbits            `# Very many individual sequences (e.g.,transcriptome)`
+
+         echo "Done!"
         """
-        
+         
 rule star_index_genome:
     """
     Creates a STAR index file from a gzipped fasta file with either:
@@ -525,14 +540,24 @@ rule star_index_genome:
         echo "Done!"
         """
 
+rule gunzipReads:
+    output:
+        fastq = temp("results/{prefix}.fastq")
+    input:
+        fastq = "results/{prefix}.fastq.gz"
+    shell:
+        """
+        gunzip -c {input.fastq} > {output.fastq}
+        """
+
 rule star_map:
-    """
-    Under construction
-    """
+    """ Map PE RNAseq reads to indexed transcriptome or genome using STAR.
+    No estimation of read abundance/couots is deon in this step.
+    STAR options are selected to align with those in ST-pipeline."""
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq",
-        index = "results/{reftype}/reference/star/{ref}.idx"
+        index = "resources/{reftype}/star/{ref}.idx"
     output:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
 #        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
@@ -558,13 +583,14 @@ rule star_map:
         --outFilterMultimapNmax 1 \
         --runThreadN {threads} \
         --outSAMtype BAM SortedByCoordinate \
-        --outSAMmultNmax 1 \
+        --outSAMmultNmax -1 \
         --outMultimapperOrder Random \
         --outFilterMismatchNoverLmax 0.1 \
         --readFilesType Fastx \
         --limitBAMsortRAM 3826372101
 
-        # STAR \
+        ##
+        # STAR options explained\
         # --genomeDir {input.index} \
         # --readFilesIn {input.R1},{input.R2} \
         # --outFileNamePrefix {params.outprefix} \
@@ -581,11 +607,13 @@ rule star_map:
         # `#--limitBAMsortRAM 0          # option star_sort_mem_limit (default 0)` \
         # `# Hardcoded by st_pipeline non-default STAR` \
         # --outSAMtype BAM SortedByCoordinate `# (STAR default: SAM)` \
-        # --outSAMmultNmax 1                  `# (STAR default: -1)` \
-        # --outMultimapperOrder Random        `# (STAR default: Old 2.4)` \
+        # --outSAMmultNmax 1                  `# (st default: 1 one multimapper alignment reported; STAR default: -1=all multimappers reported)` \
+        # --outMultimapperOrder Random        `# (STAR default: Old 2.4)` pick best alignemnt by random\
         # --outFilterMismatchNoverLmax 0.1    `# (STAR default: 0.3)` \
         # --readFilesType Fastx               `# (st default: SAM SE) (STAR default: fastx)` \
-        # --readFilesCommand -                `# (st default: samtools view -h)` 
+        # `#--readFilesCommand -                # (st default: samtools view -h)` \
+        # `# Limits recommended when running on UPPMAX (by STAR error message)` \
+        # --limitBAMsortRAM 3826372101 `# max avail RAM for BAM sorting (STAR default 0)
         # #for debugging
         # # --readMapNumber 1 
         # # Hardcoded by st_pipeline default STAR
@@ -597,11 +625,41 @@ rule star_map:
 
 
         ls {params.outprefix}*
-#        rm -f *.sam
-#        rm -f *.progress.out
+        rm -f *.sam
+        rm -f *.progress.out
         echo "Done!"
         """
-        
+
+###################
+### READ COUNTS ###
+###################        
+
+rule htseq:
+    input: 
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
+        gff = "resources/{reftype}/{ref}.gff"
+    output:
+        bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
+        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
+    params:
+        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
+    conda:
+        "envs/htseq.yml"
+    shell:
+        """
+        echo -e "
+        from src.htseq import *
+        annotateReads(
+            {input.bam},
+            {input.gff},
+            {output.bam},
+            {output.discarded},
+            "intersection-nonempty", # st-option: htseq_mode (union/intersection-strict/intersection-nonempty*) [!= multimappers]
+            {params.strandedness},     # st-option: strandness (yes*[=forward]/no/reverse)
+            False,                   # st-option: htseq_no_ambiguous (True/False*) discard htseqs ambiguous annotations
+            False                    # st-option: include_non_annotated (True/False*) include unannotated reads as '_nofeature'
+        )" | python3
+        """
         
 ##################
 ### ANNOTATION ###
@@ -668,4 +726,56 @@ rule transdecoder_predict:
         TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
         mv {wildcards.sample}.transdecoder* {params.outdir}
         rm -r {params.tmpdir}
+        """
+
+rule busco_dl:
+    output:
+        files = expand("resources/busco/lineages/{{lineage}}/{f}",
+            f = ["ancestral", "ancestral_variants", "dataset.cfg",
+                 "lengths_cutoff", "links_to_ODB10.txt", "refseq_db.faa.gz",
+                 "scores_cutoff"]),
+        flag = touch("resources/busco/{lineage}.done")
+    params:
+        url = lambda wildcards: config["busco"]["lineages"][wildcards.lineage]["url"],
+        outdir = lambda wildcards, output: f"{os.path.dirname(output.flag)}/lineages",
+        tmpfile = lambda wildcards: f"$TMPDIR/{wildcards.lineage}.tar.gz"
+    log: "results/logs/busco/{lineage}.download.log"
+    shell:
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.outdir}
+        curl -L -o {params.tmpfile} {params.url} > {log} 2>&1
+        tar -C {params.outdir} -xf {params.tmpfile}
+        rm -r {params.tmpfile}
+        """
+
+rule busco:
+    input:
+        busco_input(samples, config)
+
+rule run_busco:
+    input:
+        fa = assembly_input,
+        flag = "resources/busco/{lineage}.done",
+    output:
+        "results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt"
+    log: "results/logs/busco/{sample}.{assembler}.{lineage}.log"
+    conda: "envs/busco.yml"
+    params:
+        dlpath = lambda wildcards, input: os.path.dirname(input.flag),
+        tmpdir = "$TMPDIR/busco.{assembler}.{sample}",
+        outdir = lambda wildcards, output: os.path.dirname(output[0])
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 24
+    threads: 10
+    shadow: "shallow"
+    shell:
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
+        busco -f --offline --download_path {params.dlpath} -l {wildcards.lineage} \
+            -i {input.fa} -m transcriptome --out_path {params.tmpdir} \
+            -o {wildcards.sample} -c {threads} > {log} 2>&1
+        mv {params.tmpdir}/{wildcards.sample}/* {params.outdir}
+        rm -rf {params.tmpdir}
         """

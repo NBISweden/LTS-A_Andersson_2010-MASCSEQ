@@ -1,7 +1,8 @@
-name: dammit
+name: htseq
 channels:
   - bioconda
   - conda-forge
   - defaults
 dependencies:
-  - dammit=1.2
+  - htseq
+  - pysam
