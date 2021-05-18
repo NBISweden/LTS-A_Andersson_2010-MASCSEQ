@@ -26,10 +26,6 @@ transabyss:
     - 64
     - 96
   threads: 20
-dammit:
-  busco_group:
-    P18363_101: "alveolata_stramenophiles" # Should be "stramenopiles"
-    P18363_103: "alveolata_stramenophiles"
 genome:
   Phaeodactylum:
     fasta: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
@@ -40,3 +36,13 @@ transcriptome:
   Phaeodactylum:
     fasta: "results/genome/reference/Phaeodactylum_extractTranscriptsFromGenome.fasta.gz"
 #assembly_trinity: etc
+
+busco:
+  sample_lineages:
+    P18363_101: "stramenopiles_odb10"
+    P18363_103: "alveolata_odb10"
+  lineages:
+    alveolata_odb10:
+      url: "https://busco-data.ezlab.org/v4/data/lineages/alveolata_odb10.2020-09-10.tar.gz"
+    stramenopiles_odb10:
+      url: "https://busco-data.ezlab.org/v4/data/lineages/stramenopiles_odb10.2020-08-05.tar.gz"

@@ -12,18 +12,26 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads
+localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads, busco_dl, busco
 
-# def kallisto_output(samples, config): # Needs to be updated
-#     files = []
-#     for sample, vals in samples.items():
-#         t = samples[sample]["type"]
-#         if t == "genome":
-#             ref = samples[sample]["reference"]
-#             files.append(f"results/kallisto/{sample}/{ref}.mRNA.abundance.tsv")
-#         elif t == "transcriptome":
-#             files+=[f"results/kallisto/{sample}/{assembler}.mRNA.abundance.tsv" for assembler in config["assemblers"]]
-#     return files
+def kallisto_output(samples, config):
+    files = []
+    for sample, vals in samples.items():
+        t = samples[sample]["type"]
+        if t == "genome":
+            ref = samples[sample]["reference"]
+            files.append(f"results/kallisto/{sample}/{ref}.mRNA.abundance.tsv")
+        elif t == "transcriptome":
+            files+=[f"results/kallisto/{sample}/{assembler}.mRNA.abundance.tsv" for assembler in config["assemblers"]]
+    return files
+
+def busco_input(samples, config):
+    files = []
+    for sample, lineage in config["busco"]["sample_lineages"].items():
+        if samples[sample]["type"] == "transcriptome":
+            for assembler in config["assemblers"]:
+                files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+    return files
 
 rule all:
     """Main rule for workflow"""
@@ -274,18 +282,17 @@ rule trinity:
 ###############
 
 rule linkReferenceGenome:
-    """ Softlink external reference genome files """
     input:
         fasta = lambda wc: config["genome"][wc.ref]["fasta"],
         gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta = "resources/genome/{ref}.fasta.gz",
-        gff = "resources/genome/{ref}.gff"
+        fasta = "results/genome/reference/{ref}.fasta.gz",
+        gff = "results/genome/reference/{ref}.gff"
     log:
-        "resources/logs/transcriptomeFromGenome/{ref}_linkReferenceGenome.log"
+        "results/logs/genome/reference/{ref}_linkReferenceGenome.log"
     params:
-        fasta = prependPwd("resources/genome/{ref}.fasta.gz"),
-        gff = prependPwd("resources/genome/{ref}.gff")
+        fasta = prependPwd("results/genome/reference/{ref}.fasta.gz"),
+        gff = prependPwd("results/genome/reference/{ref}.gff")
     shell:
         """
         exec &> {log}        
@@ -294,15 +301,14 @@ rule linkReferenceGenome:
         ln -s  {input.gff} {params.gff}
 
         """
-
-rule extractTranscriptomeFromGenome:
-    """ Create a transcripåtome (fatsa files with transcript sequences
-    from reference genome fasta and gff files. """
+        
+        
+rule extractTranscriptsFromGenome:
     input:
-        fasta = "resources/genome/{ref}.fasta.gz",
-        gff = "resources/genome/{ref}.gff"
+        fasta = "results/genome/reference/{ref}.fasta.gz",
+        gff = "results/genome/reference/{ref}.gff"
     output:
-        fasta = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
+        fasta = "results/transcriptome/reference/{ref}_transcriptsFromGenome.fasta.gz"
     log:
         "results/logs/genome/reference/{ref}_extractTranscriptsFromGenome.log"
     conda:
@@ -325,16 +331,19 @@ rule extractTranscriptomeFromGenome:
 #   - handles multimappers
 #   - uses hashed pseudo-alignment approach (fast)
 #   - outputs read abundance/counts directly (no extra program)
-###############################################################    
+###############################################################
 rule kallisto_index:
-    """ Create an index for kallisto from a transcriptome (fasta file 
-    with transcript sequences). """
+    """ Create an index for kallisto from a transcriptome (fasta file
+    with transcript sequences). """rule kallisto_index:
+    """
+    Index an assembly for kallisto mapping
+    """
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
     output:
         index = "resources/{reftype, transcriptome.*}/kallisto/{ref}.idx"
     log:
-        "resources/logs/{reftype}/kallisto/{ref}_kallisto_index.log"
+        "resources/logs/{reftype}/kallisto/{ref}.index.log"
     conda:
         "envs/kallisto.yml"
     resources:
@@ -368,7 +377,7 @@ rule kallisto_map:
         out = "$TMPDIR/{ref}.{sample}.{RNA}"
     threads: 10
     resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60
+        runtime = lambda wildcards,attempt: attempt ** 2 * 60
     conda:
         "envs/kallisto.yml"
     shell:
@@ -389,47 +398,24 @@ rule kallisto_map:
         echo "Done!"
         """
 
-# Mapping with kallistoSTAR
-#   - works with either transcriptome reference files
-#     or genome fasta+ gff
-#   - no or rudimentary handling of multimappers
-#   - full alignment approach (slow)
-#   - (the mapper used in ST-pipeline)
-#   - require external read abundance/counts estimation
-#######################################################   
-rule gunzipReads:
-    """ Mainly included because STAR (contrary to what is said in 
-    manual) cannot handle gzipped input files. """
-    output:
-        fastq = temp("results/{prefix}.fastq")
-    input:
-        fastq = "results/{prefix}.fastq.gz"
-    shell:
-        """
-        gunzip -c {input.fastq} > {output.fastq}
-        """
-        
 rule star_index_transcriptome:
-    """Creates a STAR index file from a gzipped fasta file of transcript sequences 
+    """Creates a STAR index file from a gzipped fasta file of transcript sequences
     from a de novo transcriptome assembly or extracted from a reference genome.
     STAR options are selected to align with those in ST-pipeline."""
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
-    output:
+     output:
         index = directory("resources/{reftype, transcriptome.*}/star/{ref}.idx")
-    log:
+     log:
         "resources/logs/{reftype}/star/{ref}_star_index.log"
-    params:
+     params:
         genomedir = "resources/{reftype}/star/",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
-    resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60 
-    threads: 1
-    shell:
-        """
-        exec &> {log}
+     shell:
+         """
+         exec &> {log}
 
         ## get some parameter values from params and input files and use these to set
         ## recommended optionparameter values for STAR options
@@ -440,7 +426,7 @@ rule star_index_transcriptome:
            awk 'BEGIN{{ret=0}} !/>/ {{ret=ret+length($0)}} END{{print ret}}' )
 
         nseqs=$(cat {input.fasta} | grep -c ">")
-        
+
         # This should be min( 14, log2[ $genomelength ] / 2 - 1 )
         genomeSAindexNbases=$( echo $genomelength| \
            awk '{{ s = int(log($1)/2log(2) - 1); if(s>14){{ s=14 }}; print s }}' )
@@ -448,7 +434,7 @@ rule star_index_transcriptome:
         # This should be min( 18, log2[ max( $genomelength / $nseqs, {params.readlength} ) ] )
         genomeChrBinNbits=$( echo $genomelength $nseqs {params.readlength} | awk \
                              '{{ s = $1 / $2; if(s < $3){{ s = $3 }}; s = log(s) / log(2); \
-                              if(s > 18){{ s = 18 }};print s }}' )
+                              if(s > 18){{ s = 18 }};print s }}' )        
 
         ## Start STAR, backticks are used to allow comments in multi-line bash command
         STAR \
@@ -459,27 +445,26 @@ rule star_index_transcriptome:
         `# Options reducing computational load` \
         --genomeSAindexNbases $genomeSAindexNbases        `# Very small genomes` \
         --genomeChrBinNbits  $genomeChrBinNbits            `# Very many individual sequences (e.g.,transcriptome)`
-        `# Splice junction option --not used here`
-        `#--sjdbGTFfeatureExon exon                         # What main feature to use from gff/gtf` \
-        `#--sjdbGTFtagExonParentTranscript Parent           # Parent main feature field name gff3` \
-        `#--sjdbFileChrStartEnd path/to/splicejunctionfile  # Alternative Splice junction file (not used here)`
 
-        echo "Done!"
-        """
-
+         echo "Done!"
+         """
+         
 rule star_index_genome:
-    """Creates a STAR index file from a gzipped fasta file with reference genome sequences, 
-    e.g., for chromosomes or contigs and a gff file with the annotation of this genome.
-    STAR options are selected to align with those in ST-pipeline."""
+    """
+    Creates a STAR index file from a gzipped fasta file with either:
+    - reference genome sequences, e.g., for chromosomes or contigs
+    - transcript sequences from a de novo transcriptome assembly or 
+      extracted from a reference genome (not yet implemented)
+    """
     input:
-        fasta = "resources/{reftype}/{ref}.fasta.gz",
-        gff = "resources/{reftype}/{ref}.gff"
+        fasta = "results/{reftype}/reference/{ref}.fasta.gz",
+        gff = "results/{reftype}/reference/{ref}.gff"
     output:
-        index = directory("resources/{reftype, genome.*}/star/{ref}.idx")
+        index = directory("results/{reftype}/reference/star/{ref}.idx")
     log:
-        "resources/logs/{reftype}/star/{ref}_star_index.log"
+        "results/logs/{reftype}/{ref}_star_index.log"
     params:
-        genomedir = "resources/{reftype}/star/",
+        genomedir = "results/{reftype}/reference/star/",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
@@ -528,6 +513,16 @@ rule star_index_genome:
         echo "Done!"
         """
 
+rule gunzipReads:
+    output:
+        fastq = temp("results/{prefix}.fastq")
+    input:
+        fastq = "results/{prefix}.fastq.gz"
+    shell:
+        """
+        gunzip -c {input.fastq} > {output.fastq}
+        """
+
 rule star_map:
     """ Map PE RNAseq reads to indexed transcriptome or genome using STAR.
     No estimation of read abundance/couots is deon in this step.
@@ -538,6 +533,7 @@ rule star_map:
         index = "resources/{reftype}/star/{ref}.idx"
     output:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
+#        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
         logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.final.out",
         SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.SJ.out.tab",
     log:
@@ -598,7 +594,7 @@ rule star_map:
         # #--outSAMorder Paired \
         # #--outSAMprimaryFlag OneBestScore \
         # #--readMatesLengthsIn NotEqual \
-     
+        # #--limitBAMsortRAM 3826372101 `# max avail RAM for BAM sorting (STAR default 0)
 
 
         ls {params.outprefix}*

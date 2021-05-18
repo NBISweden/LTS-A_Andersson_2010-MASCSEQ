@@ -1,7 +1,7 @@
-name: dammit
+name: busco
 channels:
   - bioconda
   - conda-forge
   - defaults
 dependencies:
-  - dammit=1.2
+  - busco=5.1.2
