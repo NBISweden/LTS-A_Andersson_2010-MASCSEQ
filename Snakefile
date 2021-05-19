@@ -607,19 +607,23 @@ rule star_map:
 ### READ COUNTS ###
 ###################        
 
-rule htseq:
+rule htseqReadAnnotation:
     input: 
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
         gff = "resources/{reftype}/{ref}.gff"
     output:
         bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
         discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
+    log:
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
     params:
         strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
     conda:
         "envs/htseq.yml"
     shell:
         """
+        exec &> {log}
+        
         echo -e "
         from src.htseq import *
         annotateReads(
@@ -632,6 +636,34 @@ rule htseq:
             False,                   # st-option: htseq_no_ambiguous (True/False*) discard htseqs ambiguous annotations
             False                    # st-option: include_non_annotated (True/False*) include unannotated reads as '_nofeature'
         )" | python3
+        """
+
+rule manualReadAnnotation:
+    input: 
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
+        gff = "resources/{reftype}/{ref}.gff"
+    output:
+        bam = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
+#        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
+#    params:
+#        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
+    conda:
+        "envs/pysam.yml"
+    shell:
+        """
+        echo -e "
+        # Iterate the BAM file to set the gene name as the transcriptome's entry
+        flag_read = "rb"
+        flag_write = "wb"
+        infile = pysam.AlignmentFile({input.bam}, flag_read)
+        outfile = pysam.AlignmentFile({output.bam}, flag_write, template=infile)
+        for rec in infile.fetch(until_eof=True):
+            # NOTE chrom may have to be trimmed to 250 characters max
+            chrom = infile.getrname(rec.reference_id).split()[0]
+            rec.set_tag("XF", chrom, "Z")
+            outfile.write(rec)
+        infile.close()
+        outfile.close()        )" | python3
         """
         
 ##################
