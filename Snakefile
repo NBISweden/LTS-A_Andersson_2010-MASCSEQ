@@ -14,6 +14,16 @@ wildcard_constraints:
 
 localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads, busco_dl, busco
 
+def busco_input(samples, config):
+    files = []
+    for sample, lineage in config["busco"]["sample_lineages"].items():
+        if samples[sample]["type"] == "transcriptome":
+            for assembler in config["assemblers"]:
+                files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+    return files
+
+
+
 def kallisto_output(samples, config):
     files = []
     for sample, vals in samples.items():
@@ -334,7 +344,7 @@ rule extractTranscriptsFromGenome:
 ###############################################################
 rule kallisto_index:
     """ Create an index for kallisto from a transcriptome (fasta file
-    with transcript sequences). """rule kallisto_index:
+    with transcript sequences). """
     """
     Index an assembly for kallisto mapping
     """
@@ -434,7 +444,7 @@ rule star_index_transcriptome:
         # This should be min( 18, log2[ max( $genomelength / $nseqs, {params.readlength} ) ] )
         genomeChrBinNbits=$( echo $genomelength $nseqs {params.readlength} | awk \
                              '{{ s = $1 / $2; if(s < $3){{ s = $3 }}; s = log(s) / log(2); \
-                              if(s > 18){{ s = 18 }};print s }}' )        
+                              if(s > 18){{ s = 18 }};print s }}' )
 
         ## Start STAR, backticks are used to allow comments in multi-line bash command
         STAR \
@@ -448,7 +458,7 @@ rule star_index_transcriptome:
 
          echo "Done!"
          """
-         
+
 rule star_index_genome:
     """
     Creates a STAR index file from a gzipped fasta file with either:
@@ -605,7 +615,7 @@ rule star_map:
 
 ###################
 ### READ COUNTS ###
-###################        
+###################
 
 rule htseqReadAnnotation:
     input: 
@@ -666,46 +676,90 @@ rule manualReadAnnotation:
         outfile.close()        )" | python3
         """
         
+
+###################
+### ASSEMBLY QC ###
+###################
+rule detonate:
+    input:
+        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+        fa = assembly_input
+    output:
+        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score",
+        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
+        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
+    log:
+        "results/logs/detonate/{sample}.{assembler}.log"
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[1]),
+        read_length = config["read_length"]
+    conda:
+        "envs/detonate.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+    shell:
+        """
+        rsem-eval-calculate-score {input.R1},{input.R2} {input.fa} \
+            {params.outdir}/{wildcards.sample} {params.read_length} -p {threads} >{log} 2>&1
+        """
+
+
 ##################
 ### ANNOTATION ###
 ##################
-
-rule dammit_busco:
+rule busco_dl:
     output:
-        directory("resources/dammit/busco2db/{busco_group}_ensembl"),
-        touch("resources/dammit/busco2db/download_and_untar:busco2db-{busco_group}.done")
+        files = expand("resources/busco/lineages/{{lineage}}/{f}",
+            f = ["ancestral", "ancestral_variants", "dataset.cfg",
+                 "lengths_cutoff", "links_to_ODB10.txt", "refseq_db.faa.gz",
+                 "scores_cutoff"]),
+        flag = touch("resources/busco/{lineage}.done")
     params:
-        tmpdir = "$TMPDIR/dammit/{busco_group}"
+        url = lambda wildcards: config["busco"]["lineages"][wildcards.lineage]["url"],
+        outdir = lambda wildcards, output: f"{os.path.dirname(output.flag)}/lineages",
+        tmpfile = lambda wildcards: f"$TMPDIR/{wildcards.lineage}.tar.gz"
+    log: "results/logs/busco/{lineage}.download.log"
     shell:
         """
-        mkdir -p {params.tmpdir}
-        curl -L https://busco.ezlab.org/v2/datasets/{wildcards.busco_group}_ensembl.tar.gz | tar -xz -C {params.tmpdir}
-        mv {params.tmpdir}/* {output[0]} 
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.outdir}
+        curl -L -o {params.tmpfile} {params.url} > {log} 2>&1
+        tar -C {params.outdir} -xf {params.tmpfile}
+        rm -r {params.tmpfile}
         """
 
-rule dammit:
+rule busco:
     input:
-        assembly_input,
-        lambda wildcards: f"resources/dammit/busco2db/download_and_untar:busco2db-{config['dammit']['busco_group'][wildcards.sample]}.done"
+        busco_input(samples, config)
+
+rule run_busco:
+    input:
+        fa = assembly_input,
+        flag = "resources/busco/{lineage}.done",
     output:
-        touch("results/dammit/{sample}/{assembler}/done")
-    log:
-        "results/logs/dammit/{sample}.{assembler}.log"
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 4
+        "results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt"
+    log: "results/logs/busco/{sample}.{assembler}.{lineage}.log"
+    conda: "envs/busco.yml"
     params:
-        dbdir = "resources/dammit",
-        outdir = lambda wildcards, output: os.path.dirname(output[0]),
-        busco_group = lambda wildcards: config["dammit"]["busco_group"][wildcards.sample],
-        tmpdir = "$TMPDIR/dammit/{sample}.{assembler}"
-    conda:
-        "envs/dammit.yml"
+        dlpath = lambda wildcards, input: os.path.dirname(input.flag),
+        tmpdir = "$TMPDIR/busco.{assembler}.{sample}",
+        outdir = lambda wildcards, output: os.path.dirname(output[0])
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 24
     threads: 10
+    shadow: "shallow"
     shell:
         """
-        dammit annotate {input[0]} -n {wildcards.sample}.{wildcards.assembler} \
-            --n_threads {threads} --database-dir {params.dbdir} \
-            -o {params.tmpdir} --force --busco-group {params.busco_group} \
-            --quick --verbosity 2 > {log} 2>&1
-        mv {params.tmpdir}/* {params.outdir}
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
+        busco -f --offline --download_path {params.dlpath} -l {wildcards.lineage} \
+            -i {input.fa} -m transcriptome --out_path {params.tmpdir} \
+            -o {wildcards.sample} -c {threads} > {log} 2>&1
+        mv {params.tmpdir}/{wildcards.sample}/* {params.outdir}
+        rm -rf {params.tmpdir}
         """
