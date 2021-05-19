@@ -414,16 +414,16 @@ rule star_index_transcriptome:
     STAR options are selected to align with those in ST-pipeline."""
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
-     output:
+    output:
         index = directory("resources/{reftype, transcriptome.*}/star/{ref}.idx")
-     log:
+    log:
         "resources/logs/{reftype}/star/{ref}_star_index.log"
-     params:
+    params:
         genomedir = "resources/{reftype}/star/",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
-     shell:
+    shell:
          """
          exec &> {log}
 
