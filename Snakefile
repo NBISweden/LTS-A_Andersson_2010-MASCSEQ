@@ -7,7 +7,7 @@ container: "docker://continuumio/miniconda3:4.9.2"
 configfile: prependWfd("config/config.yml")
 
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
-samples = read_samples(prependWfd(config["sample_list"]))
+samples = read_samples(config["sample_list"])
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
@@ -54,6 +54,7 @@ rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
+        busco_input(samples, config)
         #kallisto_output(samples, config)
 
 #####################
