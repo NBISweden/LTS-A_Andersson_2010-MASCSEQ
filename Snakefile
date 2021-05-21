@@ -805,11 +805,12 @@ rule run_busco:
     shadow: "shallow"
     shell:
         """
+        exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         mkdir -p {params.tmpdir}
         busco -f --offline --download_path {params.dlpath} -l {wildcards.lineage} \
             -i {input.fa} -m proteins --out_path {params.tmpdir} \
             -o {wildcards.sample} -c {threads} > {log} 2>&1
-        mv {params.tmpdir}/{wildcards.sample}/* {params.outdir}
+        rsync -azv {params.tmpdir}/{wildcards.sample}/* {params.outdir}/
         rm -rf {params.tmpdir}
         """
