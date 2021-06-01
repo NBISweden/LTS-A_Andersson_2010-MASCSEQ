@@ -7,12 +7,30 @@ container: "docker://continuumio/miniconda3:4.9.2"
 configfile: prependWfd("config/config.yml")
 
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
-samples = read_samples(prependWfd(config["sample_list"]))
+samples = read_samples(config["sample_list"])
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads, busco_dl, busco, gffToGtf, htseqReadAnnotation, manualReadAnnotation, gunzipReads, sortBam, indexBam, manualReadCount, gffToBed, rseqcStrand
+localrules:
+    all,
+    link,
+    download_rna,
+    multiqc,
+    linkReferenceGenome,
+    extractTranscriptsFromGenome,
+    gunzipReads,
+    busco_dl,
+    busco,
+    gffToGtf,
+    htseqReadAnnotation,
+    manualReadAnnotation,
+    gunzipReads,
+    sortBam,
+    indexBam,
+    manualReadCount,
+    gffToBed,
+    rseqcStrand
 
 def busco_input(samples, config):
     files = []
@@ -21,8 +39,6 @@ def busco_input(samples, config):
             for assembler in config["assemblers"]:
                 files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
     return files
-
-
 
 def kallisto_output(samples, config):
     files = []
@@ -47,6 +63,7 @@ rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
+        busco_input(samples, config)
         #kallisto_output(samples, config)
 
 #####################
@@ -221,16 +238,21 @@ rule transabyss:
         "envs/transabyss.yml"
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
-        tmpdir = "$TMPDIR/{sample}.transabyss"
+        tmpdir = "$TMPDIR/{sample}.transabyss",
+        R1 = "$TMPDIR/{sample}.transabyss/R1",
+        R2 = "$TMPDIR/{sample}.transabyss/R2"
     threads: config["transabyss"]["threads"]
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
-        transabyss --pe {input.R1} {input.R2} -k {wildcards.k} \
+        gunzip -c {input.R1} > {params.R1}
+        gunzip -c {input.R2} > {params.R2}
+        transabyss --pe {params.R1} {params.R2} -k {wildcards.k} \
             --outdir {params.tmpdir} --name {wildcards.sample}.{wildcards.k} \
             --threads {threads} >{log} 2>&1
+        rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}
         """
 
@@ -275,14 +297,19 @@ rule trinity:
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
         tmpdir = "$TMPDIR/{sample}.trinity",
-        cpumem = config["mem_per_cpu"]
+        cpumem = config["mem_per_cpu"],
+        R1 = "$TMPDIR/{sample}.trinity/R1",
+        R2 = "$TMPDIR/{sample}.trinity/R2"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        gunzip -c {input.R1} > {params.R1}
+        gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq --left {input.R1} --right {input.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}/
         """
 
@@ -424,8 +451,8 @@ rule star_index_transcriptome:
     conda:
         "envs/star.yml"
     shell:
-         """
-         exec &> {log}
+        """
+        exec &> {log}
 
         ## get some parameter values from params and input files and use these to set
         ## recommended optionparameter values for STAR options
@@ -457,8 +484,8 @@ rule star_index_transcriptome:
         --genomeChrBinNbits  $genomeChrBinNbits            `# Very many individual sequences (e.g.,transcriptome)`
 
          echo "Done!"
-         """
-
+        """
+         
 rule star_index_genome:
     """
     Creates a STAR index file from a gzipped fasta file with either:
@@ -884,6 +911,70 @@ rule detonate:
 ##################
 ### ANNOTATION ###
 ##################
+
+def genetic_code(wildcards):
+    try:
+        return config["transdecode"]["genetic_codes"][wildcards.sample]
+    except KeyError:
+        return "Universal"
+
+rule transdecoder_longorfs:
+    input:
+        assembly_input
+    output:
+        expand("results/transdecoder/{{assembler}}/{{sample}}/{f}",
+            f = ["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3", "longest_orfs.pep"]),
+    params:
+        gencode=lambda wildcards: genetic_code(wildcards),
+        tmpdir="$TMPDIR/{assembler}.{sample}",
+        ln="$TMPDIR/{assembler}.{sample}/{sample}",
+        fa=lambda wildcards, input: os.path.abspath(input[0]),
+        outdir=lambda wildcards, output: os.path.dirname(output[0])
+    log: "results/logs/transdecoder/{assembler}.{sample}.longorfs.log"
+    conda: "envs/transdecoder.yml"
+    shadow: "full"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
+    shell:
+        """
+        exec &> {log}
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
+        ln -s {params.fa} {params.ln}
+        TransDecoder.LongOrfs -G {params.gencode} -O {params.outdir} -t {params.ln}
+        rm -rf {params.tmpdir}
+        """
+
+rule transdecoder_predict:
+    input:
+        assembly_input,
+        expand("results/transdecoder/{{assembler}}/{{sample}}/{f}",
+            f=["base_freqs.dat", "longest_orfs.cds", "longest_orfs.gff3", "longest_orfs.pep"])
+    output:
+        expand("results/transdecoder/{{assembler}}/{{sample}}/{{sample}}.transdecoder.{suffix}",
+            suffix=["bed", "cds", "gff3", "pep"])
+    params:
+        gencode=lambda wildcards: genetic_code(wildcards),
+        tmpdir="$TMPDIR/{assembler}.{sample}",
+        ln="$TMPDIR/{assembler}.{sample}/{sample}",
+        fa=lambda wildcards, input: os.path.abspath(input[0]),
+        outdir=lambda wildcards, output: os.path.dirname(output[0])
+    log: "results/logs/transdecoder/{assembler}.{sample}.predict.log"
+    conda: "envs/transdecoder.yml"
+    shadow: "full"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
+    shell:
+        """
+        exec &> {log}
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
+        ln -s {params.fa} {params.ln}
+        TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
+        mv {wildcards.sample}.transdecoder* {params.outdir}
+        rm -r {params.tmpdir}
+        """
+
 rule busco_dl:
     output:
         files = expand("resources/busco/lineages/{{lineage}}/{f}",
@@ -911,7 +1002,7 @@ rule busco:
 
 rule run_busco:
     input:
-        fa = assembly_input,
+        fa = "results/transdecoder/{assembler}/{sample}/{sample}.transdecoder.pep",
         flag = "resources/busco/{lineage}.done",
     output:
         "results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt"
@@ -927,11 +1018,12 @@ rule run_busco:
     shadow: "shallow"
     shell:
         """
+        exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         mkdir -p {params.tmpdir}
         busco -f --offline --download_path {params.dlpath} -l {wildcards.lineage} \
-            -i {input.fa} -m transcriptome --out_path {params.tmpdir} \
+            -i {input.fa} -m proteins --out_path {params.tmpdir} \
             -o {wildcards.sample} -c {threads} > {log} 2>&1
-        mv {params.tmpdir}/{wildcards.sample}/* {params.outdir}
+        rsync -azv {params.tmpdir}/{wildcards.sample}/* {params.outdir}/
         rm -rf {params.tmpdir}
         """
