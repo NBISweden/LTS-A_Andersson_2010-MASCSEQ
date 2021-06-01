@@ -276,12 +276,12 @@ rule transabyss_merge:
 
 def trinity_strand_string(wildcards):
     try:
-        strandedness = samples[wildcards.sample]["strandedness"]
+        strandness = samples[wildcards.sample]["strandness"]
     except KeyError:
         return ""
-    if strandedness == "forward":
+    if strandness == "sense":
         return "--SS_lib_type FR"
-    elif strandedness == "reverse":
+    elif strandness == "antisense":
         return "--SS_lib_type RF"
 
 rule trinity:
@@ -654,7 +654,7 @@ rule htseq:
         bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
         discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
     params:
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
+        strandness = lambda wc: "yes" if samples[wc.sample]["strandness"] == "forward" else "reverse" # TODO: add option not stranded
     conda:
         "envs/htseq.yml"
     shell:
@@ -667,7 +667,7 @@ rule htseq:
             {output.bam},
             {output.discarded},
             "intersection-nonempty", # st-option: htseq_mode (union/intersection-strict/intersection-nonempty*) [!= multimappers]
-            {params.strandedness},     # st-option: strandness (yes*[=forward]/no/reverse)
+            {params.strandness},     # st-option: strandness (yes*[=forward]/no/reverse)
             False,                   # st-option: htseq_no_ambiguous (True/False*) discard htseqs ambiguous annotations
             False                    # st-option: include_non_annotated (True/False*) include unannotated reads as '_nofeature'
         )" | python3
