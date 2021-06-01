@@ -1,6 +1,7 @@
 sample_list: "config/samples.csv"
 mem_per_cpu: 6
 read_length: 150
+stpipelineLocation: "/crex/proj/snic2020-6-126/projects/masc_seq/st_pipeline"
 assemblers:
   - "trinity"
   - "transabyss"
