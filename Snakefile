@@ -316,6 +316,7 @@ rule trinity:
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
