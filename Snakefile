@@ -274,6 +274,16 @@ rule transabyss_merge:
         mv {params.tmpout} {output}
         """
 
+def trinity_strand_string(wildcards):
+    try:
+        strandedness = samples[wildcards.sample]["strandedness"]
+    except KeyError:
+        return ""
+    if strandedness == "forward":
+        return "--SS_lib_type FR"
+    elif strandedness == "reverse":
+        return "--SS_lib_type RF"
+
 rule trinity:
     input:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
@@ -287,19 +297,20 @@ rule trinity:
     threads: config["trinity"]["threads"]
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
+        ss_lib_type = trinity_strand_string,
         tmpdir = "$TMPDIR/{sample}.trinity",
         cpumem = config["mem_per_cpu"],
         R1 = "$TMPDIR/{sample}.trinity/R1",
         R2 = "$TMPDIR/{sample}.trinity/R2"
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}/
         """
