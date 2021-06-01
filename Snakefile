@@ -12,7 +12,7 @@ samples = read_samples(prependWfd(config["sample_list"]))
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
-localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads, busco_dl, busco
+localrules: all, link, download_rna, multiqc, linkReferenceGenome, extractTranscriptsFromGenome, gunzipReads, busco_dl, busco, gffToGtf, htseqReadAnnotation, manualReadAnnotation, gunzipReads, sortBam, indexBam, manualReadCount, gffToBed, rseqcStrand
 
 def busco_input(samples, config):
     files = []
@@ -161,7 +161,7 @@ rule sortmerna:
         mv {params.workdir}/{wildcards.sample}.rRNA.log {log.reportlog}
         rm -rf {params.workdir}
         """
-
+        
 rule fastqc:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
@@ -296,13 +296,13 @@ rule linkReferenceGenome:
         fasta = lambda wc: config["genome"][wc.ref]["fasta"],
         gff = lambda wc: config["genome"][wc.ref]["gff"]
     output:
-        fasta = "results/genome/reference/{ref}.fasta.gz",
-        gff = "results/genome/reference/{ref}.gff"
+        fasta = "resources/genome/{ref}.fasta.gz",
+        gff = "resources/genome/{ref}.gff"
     log:
-        "results/logs/genome/reference/{ref}_linkReferenceGenome.log"
+        "resources/logs/genome/reference/{ref}_linkReferenceGenome.log"
     params:
-        fasta = prependPwd("results/genome/reference/{ref}.fasta.gz"),
-        gff = prependPwd("results/genome/reference/{ref}.gff")
+        fasta = prependPwd("resources/genome/reference/{ref}.fasta.gz"),
+        gff = prependPwd("resources/genome/reference/{ref}.gff")
     shell:
         """
         exec &> {log}        
@@ -315,12 +315,12 @@ rule linkReferenceGenome:
         
 rule extractTranscriptsFromGenome:
     input:
-        fasta = "results/genome/reference/{ref}.fasta.gz",
-        gff = "results/genome/reference/{ref}.gff"
+        fasta = "resources/genome/{ref}.fasta.gz",
+        gff = "resources/genome/{ref}.gff"
     output:
-        fasta = "results/transcriptome/reference/{ref}_transcriptsFromGenome.fasta.gz"
+        fasta = "resources/transcriptomeFromGenome/{ref}_transcriptsFromGenome.fasta.gz"
     log:
-        "results/logs/genome/reference/{ref}_extractTranscriptsFromGenome.log"
+        "resources/logs/genome/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
     threads: 1
@@ -467,10 +467,10 @@ rule star_index_genome:
       extracted from a reference genome (not yet implemented)
     """
     input:
-        fasta = "results/{reftype}/reference/{ref}.fasta.gz",
-        gff = "results/{reftype}/reference/{ref}.gff"
+        fasta = "resources/{reftype}/{ref}.fasta.gz",
+        gff = "resources/{reftype}/{ref}.gff"
     output:
-        index = directory("results/{reftype}/reference/star/{ref}.idx")
+        index = directory("resources/{reftype}/star/{ref}.idx")
     log:
         "results/logs/{reftype}/{ref}_star_index.log"
     params:
@@ -561,7 +561,7 @@ rule star_map:
         
         STAR \
         --genomeDir {input.index} \
-        --readFilesIn {input.R1},{input.R2} \
+        --readFilesIn {input.R1} {input.R2} \
         --outFileNamePrefix {params.outprefix} \
         --outFilterMultimapNmax 1 \
         --runThreadN {threads} \
@@ -612,70 +612,242 @@ rule star_map:
         rm -f *.progress.out
         echo "Done!"
         """
-
 ###################
 ### READ COUNTS ###
 ###################
+rule sortBam:
+    """
+    Index the sorted BAM files
+    Output file to call could be, e.g.,
+    miRNAseq/SMI416/SMI416_genemodel/bams/SMI416-R1.bam.bai
+    """
+    output:
+        bam = "results/{prefix}.sortedByName.out.bam",
+    input:
+        bam = "results/{prefix}.sortedByCoord.out.bam"
+    conda: "envs/samtools.yml"
+    shadow: "shallow"
+    log:  "results/{prefix}.sortBam.log" 
+    shell:
+        """
+        exec &> {log}
+        echo "Sorting bam"
+        samtools --version
+    	samtools sort -n {input} -o {output.bam} -O bam
+        echo "Done"
+        """
+        
+rule indexBam:
+    """
+    Index the sorted BAM files
+    Output file to call could be, e.g.,
+    miRNAseq/SMI416/SMI416_genemodel/bams/SMI416-R1.bam.bai
+    """
+    output:
+        bai = "results/{prefix}.bam.bai"
+    input:
+        bam = "results/{prefix}.bam"
+    conda: "envs/samtools.yml"
+    shadow: "shallow"
+    log:  "results/{prefix}.indexBam.log" 
+    shell:
+        """
+        exec &> {log}
+        echo "Indexing bam"
+        samtools --version
+        samtools index {input.bam}
+        echo "Done"
+        """
+        
+rule gffToGtf:
+    input:
+        gff = "resources/{prefix}.gff"
+    output:
+        gtf = "resources/{prefix}.gtf"
+    log:
+        "resources/logs/{prefix}_gffToGtf.log"
+    conda:
+        "envs/gffread.yaml"
+    shell:
+        """
+        exec &> {log}        
 
+        gffread {input.gff} -T -o {output.gtf}
+
+        echo "Done!"
+        """
+
+rule gffToBed:
+    input:
+        gff = "resources/{prefix}.gff"
+    output:
+        bed = "resources/{prefix}.bed"
+    log:
+        "resources/logs/{prefix}_gffToBed.log"
+    conda:
+        "envs/bedops.yaml"
+    shell:
+        """
+        exec &> {log}        
+
+        gff2bed <{input.gff} > {output.bed}
+
+        echo "Done!"
+        """
+
+rule rseqcStrand:
+    input:
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
+        bed = "resources/{reftype}/{ref}.bed"        
+    output:
+        txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.infer_experiment.txt"
+    conda: "envs/bedops.yaml"
+    shell:
+        """
+        infer_experiment.py \
+        -i {input.bam} \
+        -r {input.bed} \
+        > {output.txt}
+        """
+
+        
+rule htseqReadCount:
+    input: 
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
+#        bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam.bai",
+        gtf = "resources/{reftype}/{ref}.gtf"
+    output:
+        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.counts.tsv",
+    log:
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
+    params:
+        order = "name", 
+        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "sense" else "reverse" if samples[wc.sample]["strandedness"] == "antisense" else "no", # TODO: add option not stranded
+        minQuality = 0, 
+        feature = "exon",
+        superFeature = "gene_id",
+        htseqMode = "intersection-nonempty",
+        htseqAmbiguous = "none",
+        multiMappers = "ignore" 
+    threads: 1
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60
+    conda:
+        "envs/htseq.yml"
+    shell:
+        """
+        exec &> {log}
+        htseq-count --version
+        
+        htseq-count \
+        --format=bam \
+        --order={params.order} \
+        --stranded={params.strandedness} \
+        -a {params.minQuality} \
+        --type={params.feature} \
+        --idattr={params.superFeature} \
+        --mode={params.htseqMode} \
+        --nonunique={params.htseqAmbiguous} \
+        --secondary-alignments={params.multiMappers} \
+        {input.bam} {input.gtf} > {output.counts}
+
+        # Comments on some options
+        #--order # htseq default: 'name'; how reads are ordered in input.bam (samtools sort -n ->== "name")
+        #--mode {params.htseqMode} # st default: 'intersection_nonempty', htseq default: 'union' what to do if the read maps to several features (in practice this is to use  union or intersection)
+        #--nonunique # not used in st-pipeline, defaults to 'none' = ignore ambiguous, but mark them as ambiguous ('all' = _unweighted_ counts to all features for ambiguous)
+        #--secondary-alignments # not used in st-pipeline, htseq default: unclear; 'ignore'= ignore multimappers; 'score'=distribute multimappers?
+
+        """
+
+rule manualReadCount:
+    input: 
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
+        #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam.bai"
+    output:
+        counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.counts.tsv"
+    params:
+        mapq = 0,
+        minQuality = 0
+    log:
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.manualReadCount.log"
+    conda:
+        "envs/pysam.yml"
+    script: "src/manualReadCount.py"
+
+        
 rule htseqReadAnnotation:
     input: 
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-        gff = "resources/{reftype}/{ref}.gff"
+        #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai",
+        gtf = "resources/{reftype}/{ref}.gtf"
     output:
         bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
         discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
     log:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
     params:
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
+        stpipelineLocation = config["stpipelineLocation"],
+        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
+        htseq_idattr = "gene_id"
+    threads: 1
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60
     conda:
         "envs/htseq.yml"
-    shell:
-        """
-        exec &> {log}
-        
-        echo -e "
-        from src.htseq import *
-        annotateReads(
-            {input.bam},
-            {input.gff},
-            {output.bam},
-            {output.discarded},
-            "intersection-nonempty", # st-option: htseq_mode (union/intersection-strict/intersection-nonempty*) [!= multimappers]
-            {params.strandedness},     # st-option: strandness (yes*[=forward]/no/reverse)
-            False,                   # st-option: htseq_no_ambiguous (True/False*) discard htseqs ambiguous annotations
-            False                    # st-option: include_non_annotated (True/False*) include unannotated reads as '_nofeature'
-        )" | python3
-        """
+    script: "src/htseqReadAnnotation.py"
 
+rule createDataset:
+    input: 
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
+        #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai",
+        gtf = "resources/{reftype}/{ref}.gtf"
+    output:
+        bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
+        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
+    log:
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
+    params:
+        stpipelineLocation = config["stpipelineLocation"],
+        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
+        htseq_idattr = "gene_id"
+    threads: 1
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60
+    conda:
+        "envs/htseq.yml"
+    script: "src/htseqReadAnnotation.py"
+
+'''
 rule manualReadAnnotation:
     input: 
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-        gff = "resources/{reftype}/{ref}.gff"
+        bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai"
     output:
-        bam = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
-#        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
-#    params:
-#        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse" # TODO: add option not stranded
+        bam = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.annotated.bam"
     conda:
         "envs/pysam.yml"
-    shell:
-        """
-        echo -e "
-        # Iterate the BAM file to set the gene name as the transcriptome's entry
-        flag_read = "rb"
-        flag_write = "wb"
-        infile = pysam.AlignmentFile({input.bam}, flag_read)
-        outfile = pysam.AlignmentFile({output.bam}, flag_write, template=infile)
-        for rec in infile.fetch(until_eof=True):
-            # NOTE chrom may have to be trimmed to 250 characters max
-            chrom = infile.getrname(rec.reference_id).split()[0]
-            rec.set_tag("XF", chrom, "Z")
-            outfile.write(rec)
-        infile.close()
-        outfile.close()        )" | python3
-        """
-        
+    shell:"""
+python - <<EOF 
+import pysam
+# Iterate the BAM file to set the gene name as the transcriptome's entry
+flag_read = "rb"
+flag_write = "wb"
+infile = pysam.AlignmentFile("{input.bam}", flag_read)
+outfile = pysam.AlignmentFile("{output.bam}", flag_write, template=infile)
+for rec in infile.fetch(until_eof=True):
+    # NOTE chrom may have to be trimmed to 250 characters max
+    chrom = infile.getrname(rec.reference_id).split()[0]
+    rec.set_tag("XF", chrom, "Z")
+    outfile.write(rec)
+infile.close()
+outfile.close()
+EOF
+""
+'''
+
+
+
+
 
 ###################
 ### ASSEMBLY QC ###
