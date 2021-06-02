@@ -29,7 +29,8 @@ localrules:
     indexBam,
     manualReadCount,
     gffToBed,
-    rseqcStrand
+    rseqcStrand,
+    filter_to_CDS
 
 def busco_input(samples, config):
     files = []
