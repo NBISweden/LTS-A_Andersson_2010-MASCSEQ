@@ -62,7 +62,10 @@ rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
-        busco_input(samples, config)
+        busco_input(samples, config),
+        expand("results/{assembler}/{sample}/{sample}.filtered.fasta",
+            assembler = config["assemblers"],
+            sample = [sample for sample in samples.keys() if samples[sample]["type"] == "transcriptome"])
         #kallisto_output(samples, config)
 
 #####################
@@ -984,6 +987,21 @@ rule transdecoder_predict:
         TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
         mv {wildcards.sample}.transdecoder* {params.outdir}
         rm -r {params.tmpdir}
+        """
+
+rule filter_to_CDS:
+    input:
+        fa = assembly_input,
+        gff = "results/transdecoder/{assembler}/{sample}/{sample}.transdecoder.gff3"
+    output:
+        "results/{assembler}/{sample}/{sample}.filtered.fasta"
+    params:
+        ids = "$TMPDIR/{sample}.ids"
+    shell:
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        cat {input.gff} | awk '{{if ($3=="CDS") print $1}}' | uniq > {params.ids}
+        seqtk sample {input.fa} {params.ids} > {output}
         """
 
 rule busco_dl:
