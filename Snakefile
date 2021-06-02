@@ -24,8 +24,7 @@ localrules:
     busco,
     gffToGtf,
     htseqReadAnnotation,
-    manualReadAnnotation,
-    gunzipReads,
+    #manualReadAnnotation,
     sortBam,
     indexBam,
     manualReadCount,
@@ -178,7 +177,7 @@ rule sortmerna:
         mv {params.workdir}/{wildcards.sample}.rRNA.log {log.reportlog}
         rm -rf {params.workdir}
         """
-        
+
 rule fastqc:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
@@ -283,6 +282,16 @@ rule transabyss_merge:
         mv {params.tmpout} {output}
         """
 
+def trinity_strand_string(wildcards):
+    try:
+        strandness = samples[wildcards.sample]["strandness"]
+    except KeyError:
+        return ""
+    if strandness == "sense":
+        return "--SS_lib_type FR"
+    elif strandness == "antisense":
+        return "--SS_lib_type RF"
+
 rule trinity:
     input:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
@@ -296,19 +305,21 @@ rule trinity:
     threads: config["trinity"]["threads"]
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
+        ss_lib_type = trinity_strand_string,
         tmpdir = "$TMPDIR/{sample}.trinity",
         cpumem = config["mem_per_cpu"],
         R1 = "$TMPDIR/{sample}.trinity/R1",
         R2 = "$TMPDIR/{sample}.trinity/R2"
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}/
         """
@@ -654,7 +665,7 @@ rule sortBam:
         bam = "results/{prefix}.sortedByCoord.out.bam"
     conda: "envs/samtools.yml"
     shadow: "shallow"
-    log:  "results/{prefix}.sortBam.log" 
+    log:  "results/{prefix}.sortBam.log"
     shell:
         """
         exec &> {log}
@@ -663,7 +674,7 @@ rule sortBam:
     	samtools sort -n {input} -o {output.bam} -O bam
         echo "Done"
         """
-        
+
 rule indexBam:
     """
     Index the sorted BAM files
@@ -676,7 +687,7 @@ rule indexBam:
         bam = "results/{prefix}.bam"
     conda: "envs/samtools.yml"
     shadow: "shallow"
-    log:  "results/{prefix}.indexBam.log" 
+    log:  "results/{prefix}.indexBam.log"
     shell:
         """
         exec &> {log}
@@ -685,7 +696,7 @@ rule indexBam:
         samtools index {input.bam}
         echo "Done"
         """
-        
+
 rule gffToGtf:
     input:
         gff = "resources/{prefix}.gff"
@@ -725,7 +736,7 @@ rule gffToBed:
 rule rseqcStrand:
     input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
-        bed = "resources/{reftype}/{ref}.bed"        
+        bed = "resources/{reftype}/{ref}.bed"
     output:
         txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.infer_experiment.txt"
     conda: "envs/bedops.yaml"
@@ -737,9 +748,9 @@ rule rseqcStrand:
         > {output.txt}
         """
 
-        
+
 rule htseqReadCount:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
 #        bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam.bai",
         gtf = "resources/{reftype}/{ref}.gtf"
@@ -748,14 +759,14 @@ rule htseqReadCount:
     log:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
     params:
-        order = "name", 
+        order = "name",
         strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "sense" else "reverse" if samples[wc.sample]["strandedness"] == "antisense" else "no", # TODO: add option not stranded
-        minQuality = 0, 
+        minQuality = 0,
         feature = "exon",
         superFeature = "gene_id",
         htseqMode = "intersection-nonempty",
         htseqAmbiguous = "none",
-        multiMappers = "ignore" 
+        multiMappers = "ignore"
     threads: 1
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60
@@ -787,7 +798,7 @@ rule htseqReadCount:
         """
 
 rule manualReadCount:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
         #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam.bai"
     output:
@@ -801,9 +812,9 @@ rule manualReadCount:
         "envs/pysam.yml"
     script: "src/manualReadCount.py"
 
-        
+
 rule htseqReadAnnotation:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
         #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai",
         gtf = "resources/{reftype}/{ref}.gtf"
@@ -814,7 +825,7 @@ rule htseqReadAnnotation:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
     params:
         stpipelineLocation = config["stpipelineLocation"],
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
+        strandness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
         htseq_idattr = "gene_id"
     threads: 1
     resources:
@@ -824,7 +835,7 @@ rule htseqReadAnnotation:
     script: "src/htseqReadAnnotation.py"
 
 rule createDataset:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
         #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai",
         gtf = "resources/{reftype}/{ref}.gtf"
@@ -835,7 +846,7 @@ rule createDataset:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
     params:
         stpipelineLocation = config["stpipelineLocation"],
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
+        strandness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
         htseq_idattr = "gene_id"
     threads: 1
     resources:
