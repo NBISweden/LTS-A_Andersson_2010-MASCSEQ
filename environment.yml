@@ -8,3 +8,4 @@ dependencies:
     - snakemake-minimal=6.0.5
     - pandas=1.2.3
     - mamba >= 0.3.6
+    - seqtk=1.3
