@@ -5,9 +5,9 @@ from src.common import read_samples, assembly_input
 include: "src/common.py"
 container: "docker://continuumio/miniconda3:4.9.2"
 configfile: prependWfd("config/config.yml")
-
+            
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
-samples = read_samples(config["sample_list"])
+samples = read_samples(prependWfd(config["sample_list"]))
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
@@ -537,15 +537,26 @@ rule star_index_genome:
         --genomeDir {output.index} \
         --genomeFastaFiles {input.fasta} \
         --runThreadN {threads} \
-        `# Splice junction option` \
-        --sjdbGTFfile {input.gff}                         `# Annotation file (for genome ref)` \
-        --sjdbOverhang $sjdbOverhang                      `# nbases to use for splice junction signature` \
-        --sjdbGTFfeatureExon exon                         `# What main feature to use from gff/gtf` \
-        --sjdbGTFtagExonParentTranscript Parent           `# Parent main feature field name gff3` \
-        `#--sjdbFileChrStartEnd path/to/splicejunctionfile  # Alternative Splice junction file (not used here)` \
-        `# Options reducing computational load` \
-        --genomeSAindexNbases $genomeSAindexNbases        `# Very small genomes` \
-        --genomeChrBinNbits  $genomeChrBinNbits            `# Very many individual sequences (e.g.,transcriptome)`
+        --sjdbGTFfile {input.gff} \
+        --sjdbOverhang $sjdbOverhang \
+        --sjdbGTFfeatureExon exon \
+        --sjdbGTFtagExonParentTranscript Parent \
+        --genomeSAindexNbases $genomeSAindexNbases \
+        --genomeChrBinNbits  $genomeChrBinNbits \
+
+        ## STAR options
+        # `# Splice junction option` \
+        # --sjdbGTFfile {input.gff}                         annotation file (for genome ref)
+        # --sjdbOverhang $sjdbOverhang                      nbases to use for splice junction
+        #                                                   signature
+        # --sjdbGTFfeatureExon exon                         What main feature to use from gff/gtf
+        # --sjdbGTFtagExonParentTranscript Parent           Parent main feature field name gff3
+        # --sjdbFileChrStartEnd <path/to/splicejunctionfile Alternative Splice junction file 
+        #                                                   (not used here)
+        # Options reducing computational load` \
+        # --genomeSAindexNbases $genomeSAindexNbases        Very small genomes
+        # --genomeChrBinNbits  $genomeChrBinNbits           Very many individual sequences 
+        #                                                   (e.g.,transcriptome)`
 
         echo "Done!"
         """
@@ -573,6 +584,7 @@ rule star_map:
 #        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
         logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.final.out",
         SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.SJ.out.tab",
+#        unmapped = "results/{reftype}/star/{ref}/{sample}.{RNA}.unmapped.fastq"
     log:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
     params:
@@ -593,50 +605,52 @@ rule star_map:
         --outFilterMultimapNmax 1 \
         --runThreadN {threads} \
         --outSAMtype BAM SortedByCoordinate \
-        --outSAMmultNmax -1 \
+        --outSAMmultNmax 1 \
         --outMultimapperOrder Random \
         --outFilterMismatchNoverLmax 0.1 \
         --readFilesType Fastx \
+        --outSAMunmapped Within KeepPairs \
         --limitBAMsortRAM 3826372101
 
         ##
-        # STAR options explained\
-        # --genomeDir {input.index} \
-        # --readFilesIn {input.R1},{input.R2} \
-        # --outFileNamePrefix {params.outprefix} \
-        # `#Adjustable in st_pipeline` \
-        # --outFilterMultimapNmax 1    `# option disable_multimap == True -> 1 (deafult 20)` \
-        # --runThreadN {threads}       `# option threads (default 8)` \
-        # `#--clip3pNbases 0             # option inverse_mapping_rv_trimming (default 0)` \
-        # `#--clip5pNbases 0             # option mapping_rv_trimming (default 0)` \
-        # `#--alignEndsType EndToEnd     # option disable_clipping (default EndToEnd)` \
-        # `#--alignIntronMin 1           # option min_intron_size (default 1)` \
-        # `#--alignIntronMax 1           # option max_intron_size (default 20)` \
-        # `#--outFilterMatchNmin 20      # option min_length_trimming (default 20)` \
-        # `#--genomeLoad NoSharedMemory  # option star_genome_loading (default NoSharedMemory)` \
-        # `#--limitBAMsortRAM 0          # option star_sort_mem_limit (default 0)` \
-        # `# Hardcoded by st_pipeline non-default STAR` \
-        # --outSAMtype BAM SortedByCoordinate `# (STAR default: SAM)` \
-        # --outSAMmultNmax 1                  `# (st default: 1 one multimapper alignment reported; STAR default: -1=all multimappers reported)` \
-        # --outMultimapperOrder Random        `# (STAR default: Old 2.4)` pick best alignemnt by random\
-        # --outFilterMismatchNoverLmax 0.1    `# (STAR default: 0.3)` \
-        # --readFilesType Fastx               `# (st default: SAM SE) (STAR default: fastx)` \
-        # `#--readFilesCommand -                # (st default: samtools view -h)` \
-        # `# Limits recommended when running on UPPMAX (by STAR error message)` \
-        # --limitBAMsortRAM 3826372101 `# max avail RAM for BAM sorting (STAR default 0)
-        # #for debugging
-        # # --readMapNumber 1 
-        # # Hardcoded by st_pipeline default STAR
-        # #--outFilterType Normal \
-        # #--outSAMorder Paired \
-        # #--outSAMprimaryFlag OneBestScore \
-        # #--readMatesLengthsIn NotEqual \
-        # #--limitBAMsortRAM 3826372101 `# max avail RAM for BAM sorting (STAR default 0)
+        # STAR options explained
+        # --genomeDir {input.index}
+        # --readFilesIn {input.R1},{input.R2}
+        # --outFileNamePrefix {params.outprefix}
+        # Adjustable in st_pipeline
+        # --outFilterMultimapNmax 1    option disable_multimap == True -> 1 (deafult 20)
+        # --runThreadN {threads}       option threads (default 8)
+        # --clip3pNbases 0             option inverse_mapping_rv_trimming (default 0)
+        # --clip5pNbases 0             option mapping_rv_trimming (default 0)
+        # --alignEndsType EndToEnd     option disable_clipping (default EndToEnd)
+        # --alignIntronMin 1           option min_intron_size (default 1)
+        # --alignIntronMax 1           option max_intron_size (default 20)
+        # --outFilterMatchNmin 20      option min_length_trimming (default 20)
+        # --genomeLoad NoSharedMemory  option star_genome_loading (default NoSharedMemory)
+        # --limitBAMsortRAM 0          option star_sort_mem_limit (default 0)
+        # Hardcoded by st_pipeline non-default STAR
+        # --outSAMtype BAM SortedByCoordinate (STAR default: SAM)
+        # --outSAMmultNmax 1                  (st default: 1 one multimapper alignment reported; 
+        #                                     STAR default: -1=all multimappers reported)
+        # --outMultimapperOrder Random        (STAR default: Old 2.4)` pick best alignemnt by random
+        # --outFilterMismatchNoverLmax 0.1    (STAR default: 0.3)
+        # --readFilesType Fastx               (st default: SAM SE) (STAR default: fastx)
+        # --readFilesCommand -              (st default: samtools view -h)
+        #  Limits recommended when running on UPPMAX (by STAR error message)
+        # --limitBAMsortRAM 3826372101  max avail RAM for BAM sorting (STAR default 0)
+        # for debugging
+        # --readMapNumber 1 
+        # Hardcoded by st_pipeline default STAR
+        # --outFilterType Normal
+        # --outSAMorder Paired
+        # --outSAMprimaryFlag OneBestScore
+        # --readMatesLengthsIn NotEqual
+        # --limitBAMsortRAM 3826372101   max avail RAM for BAM sorting (STAR default 0)
 
 
         ls {params.outprefix}*
         rm -f *.sam
-        rm -f *.progress.out
+        #rm -f *.progress.out
         echo "Done!"
         """
 ###################
@@ -741,18 +755,19 @@ rule rseqcStrand:
 rule htseqReadCount:
     input: 
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
-#        bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam.bai",
         gtf = "resources/{reftype}/{ref}.gtf"
     output:
         counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.counts.tsv",
     log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadCount.log"
     params:
         order = "name", 
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "sense" else "reverse" if samples[wc.sample]["strandedness"] == "antisense" else "no", # TODO: add option not stranded
-        minQuality = 0, 
+        strandedness = lambda wc: "yes" if samples[wc.sample]["strandness"] == "sense" \
+                       else "reverse" if samples[wc.sample]["stranddness"] == "antisense" \
+                            else "no", 
+        minMapq = 0, 
         feature = "exon",
-        superFeature = "gene_id",
+        sumOnFeature = "gene_id",
         htseqMode = "intersection-nonempty",
         htseqAmbiguous = "none",
         multiMappers = "ignore" 
@@ -770,109 +785,42 @@ rule htseqReadCount:
         --format=bam \
         --order={params.order} \
         --stranded={params.strandedness} \
-        -a {params.minQuality} \
+        -a {params.minMapq} \
         --type={params.feature} \
-        --idattr={params.superFeature} \
+        --idattr={params.sumOnFeature} \
         --mode={params.htseqMode} \
         --nonunique={params.htseqAmbiguous} \
         --secondary-alignments={params.multiMappers} \
         {input.bam} {input.gtf} > {output.counts}
 
         # Comments on some options
-        #--order # htseq default: 'name'; how reads are ordered in input.bam (samtools sort -n ->== "name")
-        #--mode {params.htseqMode} # st default: 'intersection_nonempty', htseq default: 'union' what to do if the read maps to several features (in practice this is to use  union or intersection)
-        #--nonunique # not used in st-pipeline, defaults to 'none' = ignore ambiguous, but mark them as ambiguous ('all' = _unweighted_ counts to all features for ambiguous)
-        #--secondary-alignments # not used in st-pipeline, htseq default: unclear; 'ignore'= ignore multimappers; 'score'=distribute multimappers?
+        #--order <name/pos>; htseq default: 'name'; how reads are ordered in 
+        #        input.bam (samtools sort -n -> == "name")
+        #--mode  <union/intersection-strict/intersection-nonempty> ; 
+        #        st default:  'intersection_nonempty', htseq default: 'union' 
+        #        what to do if the read maps to several features (in practice 
+        #        this is to use  union or intersection)
+        #--nonunique <none/all[random?/fraction?]>;  htseq default: 'none' = ignore ambiguous, 
+        #        but mark them as ambiguous ('all' = _unweighted_ counts 
+        #        to all features for ambiguous)
+        #--secondary-alignments <score/ignore>;  htseq default: unclear <score?>
+        #        'ignore'= ignore multimappers; 'score'=distribute multimappers?
 
         """
 
 rule manualReadCount:
     input: 
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
-        #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam.bai"
     output:
         counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.counts.tsv"
     params:
-        mapq = 0,
-        minQuality = 0
+        minMapq = 0,
+        multimappers = "ignore"
     log:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.manualReadCount.log"
     conda:
         "envs/pysam.yml"
     script: "src/manualReadCount.py"
-
-        
-rule htseqReadAnnotation:
-    input: 
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-        #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai",
-        gtf = "resources/{reftype}/{ref}.gtf"
-    output:
-        bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
-        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
-    log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
-    params:
-        stpipelineLocation = config["stpipelineLocation"],
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
-        htseq_idattr = "gene_id"
-    threads: 1
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60
-    conda:
-        "envs/htseq.yml"
-    script: "src/htseqReadAnnotation.py"
-
-rule createDataset:
-    input: 
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-        #bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai",
-        gtf = "resources/{reftype}/{ref}.gtf"
-    output:
-        bam = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.annotated.bam",
-        discarded = "results/{reftype}/star/{ref}/{sample}.{RNA}.annotated_discarded.bam",
-    log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadAnnotation.log"
-    params:
-        stpipelineLocation = config["stpipelineLocation"],
-        strandedness = lambda wc: "yes" if samples[wc.sample]["strandedness"] == "forward" else "reverse", # TODO: add option not stranded
-        htseq_idattr = "gene_id"
-    threads: 1
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60
-    conda:
-        "envs/htseq.yml"
-    script: "src/htseqReadAnnotation.py"
-
-'''
-rule manualReadAnnotation:
-    input: 
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-        bai = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam.bai"
-    output:
-        bam = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.annotated.bam"
-    conda:
-        "envs/pysam.yml"
-    shell:"""
-python - <<EOF 
-import pysam
-# Iterate the BAM file to set the gene name as the transcriptome's entry
-flag_read = "rb"
-flag_write = "wb"
-infile = pysam.AlignmentFile("{input.bam}", flag_read)
-outfile = pysam.AlignmentFile("{output.bam}", flag_write, template=infile)
-for rec in infile.fetch(until_eof=True):
-    # NOTE chrom may have to be trimmed to 250 characters max
-    chrom = infile.getrname(rec.reference_id).split()[0]
-    rec.set_tag("XF", chrom, "Z")
-    outfile.write(rec)
-infile.close()
-outfile.close()
-EOF
-""
-'''
-
-
 
 
 
