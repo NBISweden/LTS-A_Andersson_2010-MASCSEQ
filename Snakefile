@@ -24,13 +24,13 @@ localrules:
     busco,
     gffToGtf,
     htseqReadAnnotation,
-    manualReadAnnotation,
-    gunzipReads,
+    #manualReadAnnotation,
     sortBam,
     indexBam,
     manualReadCount,
     gffToBed,
-    rseqcStrand
+    rseqcStrand,
+    filter_to_CDS
 
 def busco_input(samples, config):
     files = []
@@ -63,7 +63,10 @@ rule all:
     """Main rule for workflow"""
     input:
         "results/multiqc/multiqc.html",
-        busco_input(samples, config)
+        busco_input(samples, config),
+        expand("results/{assembler}/{sample}/{sample}.filtered.fasta",
+            assembler = config["assemblers"],
+            sample = [sample for sample in samples.keys() if samples[sample]["type"] == "transcriptome"])
         #kallisto_output(samples, config)
 
 #####################
@@ -178,7 +181,7 @@ rule sortmerna:
         mv {params.workdir}/{wildcards.sample}.rRNA.log {log.reportlog}
         rm -rf {params.workdir}
         """
-        
+
 rule fastqc:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
@@ -283,6 +286,16 @@ rule transabyss_merge:
         mv {params.tmpout} {output}
         """
 
+def trinity_strand_string(wildcards):
+    try:
+        strandness = samples[wildcards.sample]["strandness"]
+    except KeyError:
+        return ""
+    if strandness == "sense":
+        return "--SS_lib_type FR"
+    elif strandness == "antisense":
+        return "--SS_lib_type RF"
+
 rule trinity:
     input:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
@@ -296,19 +309,21 @@ rule trinity:
     threads: config["trinity"]["threads"]
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[0]),
+        ss_lib_type = trinity_strand_string,
         tmpdir = "$TMPDIR/{sample}.trinity",
         cpumem = config["mem_per_cpu"],
         R1 = "$TMPDIR/{sample}.trinity/R1",
         R2 = "$TMPDIR/{sample}.trinity/R2"
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        mkdir -p {params.tmpdir}
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         rm {params.R1} {params.R2}
         mv {params.tmpdir}/* {params.outdir}/
         """
@@ -668,7 +683,7 @@ rule sortBam:
         bam = "results/{prefix}.sortedByCoord.out.bam"
     conda: "envs/samtools.yml"
     shadow: "shallow"
-    log:  "results/{prefix}.sortBam.log" 
+    log:  "results/{prefix}.sortBam.log"
     shell:
         """
         exec &> {log}
@@ -677,7 +692,7 @@ rule sortBam:
     	samtools sort -n {input} -o {output.bam} -O bam
         echo "Done"
         """
-        
+
 rule indexBam:
     """
     Index the sorted BAM files
@@ -690,7 +705,7 @@ rule indexBam:
         bam = "results/{prefix}.bam"
     conda: "envs/samtools.yml"
     shadow: "shallow"
-    log:  "results/{prefix}.indexBam.log" 
+    log:  "results/{prefix}.indexBam.log"
     shell:
         """
         exec &> {log}
@@ -699,7 +714,7 @@ rule indexBam:
         samtools index {input.bam}
         echo "Done"
         """
-        
+
 rule gffToGtf:
     input:
         gff = "resources/{prefix}.gff"
@@ -739,7 +754,7 @@ rule gffToBed:
 rule rseqcStrand:
     input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
-        bed = "resources/{reftype}/{ref}.bed"        
+        bed = "resources/{reftype}/{ref}.bed"
     output:
         txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.infer_experiment.txt"
     conda: "envs/bedops.yaml"
@@ -751,9 +766,9 @@ rule rseqcStrand:
         > {output.txt}
         """
 
-        
+
 rule htseqReadCount:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
         gtf = "resources/{reftype}/{ref}.gtf"
     output:
@@ -763,14 +778,14 @@ rule htseqReadCount:
     params:
         order = "name", 
         strandedness = lambda wc: "yes" if samples[wc.sample]["strandness"] == "sense" \
-                       else "reverse" if samples[wc.sample]["stranddness"] == "antisense" \
+                       else "reverse" if samples[wc.sample]["strandness"] == "antisense" \
                             else "no", 
         minMapq = 0, 
         feature = "exon",
         sumOnFeature = "gene_id",
         htseqMode = "intersection-nonempty",
         htseqAmbiguous = "none",
-        multiMappers = "ignore" 
+        multiMappers = "ignore"
     threads: 1
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60
@@ -809,7 +824,7 @@ rule htseqReadCount:
         """
 
 rule manualReadCount:
-    input: 
+    input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
     output:
         counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.counts.tsv"
@@ -821,7 +836,6 @@ rule manualReadCount:
     conda:
         "envs/pysam.yml"
     script: "src/manualReadCount.py"
-
 
 
 ###################
@@ -921,6 +935,21 @@ rule transdecoder_predict:
         TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
         mv {wildcards.sample}.transdecoder* {params.outdir}
         rm -r {params.tmpdir}
+        """
+
+rule filter_to_CDS:
+    input:
+        fa = assembly_input,
+        gff = "results/transdecoder/{assembler}/{sample}/{sample}.transdecoder.gff3"
+    output:
+        "results/{assembler}/{sample}/{sample}.filtered.fasta"
+    params:
+        ids = "$TMPDIR/{sample}.ids"
+    shell:
+        """
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        cat {input.gff} | awk '{{if ($3=="CDS") print $1}}' | uniq > {params.ids}
+        seqtk subseq {input.fa} {params.ids} > {output}
         """
 
 rule busco_dl:

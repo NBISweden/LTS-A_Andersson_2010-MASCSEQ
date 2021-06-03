@@ -4,7 +4,7 @@ read_length: 150
 stpipelineLocation: "/crex/proj/snic2020-6-126/projects/masc_seq/st_pipeline"
 assemblers:
   - "trinity"
-  - "transabyss"
+  #- "transabyss"
 cutadapt:
   R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
   R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"

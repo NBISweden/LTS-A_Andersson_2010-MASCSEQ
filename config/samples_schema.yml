@@ -13,6 +13,10 @@ properties:
   reference:
     type: string
     description: Name of genome reference
+  strandness:
+    type: string
+    description: strandness of library
+    enum: ["sense", "antisense", "unstranded"]
   type:
     type: string
     enum: ["genome", "transcriptome"]

@@ -1,0 +1,37 @@
+sample_list: "samples_test.csv"
+read_length: 150
+assemblers:
+  - "trinity"
+cutadapt:
+  R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
+  R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
+  minlen: 50
+sortmerna:
+  dbs:
+    - "silva-euk-28s-id98"
+    - "silva-euk-18s-id95"
+trinity:
+  kmer: 32
+  threads: 20
+transabyss:
+  kmer:
+    - 32
+    - 64
+    - 96
+  threads: 20
+genome:
+  Phaeodactylum:
+    fasta: "data/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
+    gff: "data/Phaeodactylum_tricornutum.ASM15095v2.48.chr.gff3"
+transcriptome:
+  Phaeodactylum:
+    fasta: "results/genome/reference/Phaeodactylum_extractTranscriptsFromGenome.fasta.gz"
+busco:
+  sample_lineages:
+    P18363_101: "stramenopiles_odb10"
+    P18363_103: "alveolata_odb10"
+  lineages:
+    alveolata_odb10:
+      url: "https://busco-data.ezlab.org/v4/data/lineages/alveolata_odb10.2020-09-10.tar.gz"
+    stramenopiles_odb10:
+      url: "https://busco-data.ezlab.org/v4/data/lineages/stramenopiles_odb10.2020-08-05.tar.gz"
