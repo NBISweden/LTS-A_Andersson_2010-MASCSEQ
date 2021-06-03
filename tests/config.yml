@@ -1,4 +1,4 @@
-sample_list: "samples_test.csv"
+sample_list: "tests/samples_test.csv"
 read_length: 150
 assemblers:
   - "trinity"
