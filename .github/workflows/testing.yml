@@ -22,10 +22,10 @@ jobs:
       - uses: actions/checkout@v2
       - name: Setup Miniconda
       - uses: conda-incubator/setup-miniconda@v2.1.1
-      with:
-        environment-file: environment.yml
-        activate-environment: masc-seq
-        auto-activate-base: false
+        with:
+          environment-file: environment.yml
+          activate-environment: masc-seq
+          auto-activate-base: false
       - name: Zip fastq
         run: |
           gzip tests/data/*.fastq
