@@ -18,11 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: conda-incubator/setup-miniconda@v2
-        with:
-          environment-file: environment.yml
-          activate-environment: masc-seq-asm
-          auto-activate-base: false
+      - uses: s-weigand/setup-conda@v1
+      - name: Install the conda environment
+        run: |
+          conda env update -n base -f environment.yml
       - name: Zip fastq
         run: |
           gzip tests/data/*.fastq
