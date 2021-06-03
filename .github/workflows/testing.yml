@@ -22,7 +22,7 @@ jobs:
         with:
           environment-file: environment.yml
           activate-environment: masc-seq-asm
-          auto-activate-base: false
+          auto-activate-base: true
       - name: Zip fastq
         run: |
           gzip tests/data/*.fastq
