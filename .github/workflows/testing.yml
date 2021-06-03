@@ -1,0 +1,43 @@
+name: Testing
+
+on:
+  workflow_dispatch:
+    branches:
+      - main
+      - devel
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - devel
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          environment-file: environment.yml
+          activate-environment: masc-seq
+          auto-activate-base: false
+      - name: Zip fastq
+        run: |
+          gzip tests/data/*.fastq
+      - name: Dry run
+        run: |
+          snakemake --configfile tests/config.yml --directory tests/ -n
+      - name: Preprocess
+        run: |
+          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/multiqc/multiqc.html -n
+      - name: Assembly
+        run: |
+          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta
+      - name: Busco
+        run: |
+          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ busco
+      - name: Transdecoder
+        run: |
+          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta
