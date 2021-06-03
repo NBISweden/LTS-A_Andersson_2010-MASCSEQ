@@ -1002,7 +1002,7 @@ rule filter_to_CDS:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         cat {input.gff} | awk '{{if ($3=="CDS") print $1}}' | uniq > {params.ids}
-        seqtk sample {input.fa} {params.ids} > {output}
+        seqtk subseq {input.fa} {params.ids} > {output}
         """
 
 rule busco_dl:
