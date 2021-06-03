@@ -21,7 +21,7 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           environment-file: environment.yml
-          activate-environment: masc-seq
+          activate-environment: masc-seq-asm
           auto-activate-base: false
       - name: Zip fastq
         run: |
