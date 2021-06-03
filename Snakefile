@@ -15,21 +15,22 @@ wildcard_constraints:
 localrules:
     all,
     link,
+    linkReferenceGenome,
+    
     download_rna,
     multiqc,
     linkReferenceGenome,
+    linkReferenceTranscriptome,
     extractTranscriptsFromGenome,
     gunzipReads,
+    sortBam,
+    indexBam,
+#    manualReadCount,
+    rseqcStrand,
     busco_dl,
     busco,
     gffToGtf,
-    htseqReadAnnotation,
-    #manualReadAnnotation,
-    sortBam,
-    indexBam,
-    manualReadCount,
     gffToBed,
-    rseqcStrand,
     filter_to_CDS
 
 def busco_input(samples, config):
@@ -341,10 +342,10 @@ rule linkReferenceGenome:
         fasta = "resources/genome/{ref}.fasta.gz",
         gff = "resources/genome/{ref}.gff"
     log:
-        "resources/logs/genome/reference/{ref}_linkReferenceGenome.log"
+        "resources/logs/genome/{ref}_linkReferenceGenome.log"
     params:
-        fasta = prependPwd("resources/genome/reference/{ref}.fasta.gz"),
-        gff = prependPwd("resources/genome/reference/{ref}.gff")
+        fasta = prependPwd("resources/genome/{ref}.fasta.gz"),
+        gff = prependPwd("resources/genome/{ref}.gff")
     shell:
         """
         exec &> {log}        
@@ -353,7 +354,25 @@ rule linkReferenceGenome:
         ln -s  {input.gff} {params.gff}
 
         """
+
+rule linkReferenceTranscriptome:
+    input:
+        fasta = lambda wc: config["transcriptome"][wc.ref]["fasta"]
+    output:
+        fasta = "resources/transcriptome/{ref}.fasta.gz"
+    log:
+        "resources/logs/transcriptome/{ref}_linkReferenceTranscriptome.log"
+    params:
+        fasta = prependPwd("resources/transcriptome/{ref}.fasta.gz"),
+    shell:
+        """
+        exec &> {log}        
         
+        echo "Soft-linking {input.fasta} to {params.fasta}"
+        ln -s  {input.fasta} {params.fasta}
+
+        """
+
         
 rule extractTranscriptsFromGenome:
     input:
@@ -362,7 +381,7 @@ rule extractTranscriptsFromGenome:
     output:
         fasta = "resources/transcriptomeFromGenome/{ref}_transcriptsFromGenome.fasta.gz"
     log:
-        "resources/logs/genome/{ref}_extractTranscriptsFromGenome.log"
+        "resources/logs/transcriptome/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
     threads: 1
@@ -465,6 +484,8 @@ rule star_index_transcriptome:
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
+    resources:
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60 
     shell:
         """
         exec &> {log}
@@ -772,7 +793,7 @@ rule htseqReadCount:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
         gtf = "resources/{reftype}/{ref}.gtf"
     output:
-        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.counts.tsv",
+        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.abundance.tsv",
     log:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadCount.log"
     params:
@@ -827,7 +848,7 @@ rule manualReadCount:
     input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
     output:
-        counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.counts.tsv"
+        counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.abundance.tsv"
     params:
         minMapq = 0,
         multimappers = "ignore"
