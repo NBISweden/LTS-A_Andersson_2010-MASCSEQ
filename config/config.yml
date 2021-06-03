@@ -37,6 +37,8 @@ genome:
 transcriptome:
   Phaeodactylum:
     fasta: "results/genome/reference/Phaeodactylum_extractTranscriptsFromGenome.fasta.gz"
+  Heterocapsa:
+    fasta: "/crex/proj/snic2020-6-126/projects/masc_seq/LTS-A_Andersson_2010-MASCSEQ/results/trinity/P18363_103/P18363_103.filtered.fasta"
 #assembly_trinity: etc
 
 busco:
