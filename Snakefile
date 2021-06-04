@@ -778,7 +778,7 @@ rule rseqcStrand:
         bed = "resources/{reftype}/{ref}.bed"
     output:
         txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.infer_experiment.txt"
-    conda: "envs/bedops.yaml"
+    conda: "envs/rseqc.yaml"
     shell:
         """
         infer_experiment.py \
