@@ -401,10 +401,9 @@ rule extractTranscriptsFromGenome:
 #   - outputs read abundance/counts directly (no extra program)
 ###############################################################
 rule kallisto_index:
-    """ Create an index for kallisto from a transcriptome (fasta file
-    with transcript sequences). """
-    """
-    Index an assembly for kallisto mapping
+    """ 
+    Create an index for kallisto from a transcriptome (fasta file
+    with transcript sequences). 
     """
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
@@ -429,8 +428,10 @@ rule kallisto_index:
         """
 
 rule kallisto_map:
-    """ Map PE RNAseq reads to indexed transcriptome using kallisto.
-    result in read abundance/counts output."""
+    """ 
+    Map PE RNAseq reads to indexed transcriptome using kallisto.
+    result in read abundance/counts output.
+    """
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq.gz",
@@ -467,9 +468,11 @@ rule kallisto_map:
         """
 
 rule star_index_transcriptome:
-    """Creates a STAR index file from a gzipped fasta file of transcript sequences
-    from a de novo transcriptome assembly or extracted from a reference genome.
-    STAR options are selected to align with those in ST-pipeline."""
+    """
+    Creates a STAR index file from a gzipped fasta file of transcript sequences
+    either from a de novo transcriptome assembly or extracted from a reference genome.
+    STAR options are (at least partly) selected to align with those in ST-pipeline.
+    """
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
     output:
@@ -521,10 +524,9 @@ rule star_index_transcriptome:
          
 rule star_index_genome:
     """
-    Creates a STAR index file from a gzipped fasta file with either:
-    - reference genome sequences, e.g., for chromosomes or contigs
-    - transcript sequences from a de novo transcriptome assembly or 
-      extracted from a reference genome (not yet implemented)
+    Creates a STAR index file from a gzipped fasta file with reference
+    genome sequences, e.g., for chromosomes or contigs, and a gtf file
+    with features.
     """
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz",
@@ -595,6 +597,9 @@ rule star_index_genome:
         """
 
 rule gunzipReads:
+    """
+    Unzips a gzipped fastq file to a temporary fastq file.
+    """
     output:
         fastq = temp("results/{prefix}.fastq")
     input:
@@ -605,9 +610,11 @@ rule gunzipReads:
         """
 
 rule star_map:
-    """ Map PE RNAseq reads to indexed transcriptome or genome using STAR.
-    No estimation of read abundance/couots is deon in this step.
-    STAR options are selected to align with those in ST-pipeline."""
+    """ 
+    Map PE RNAseq reads to indexed transcriptome or genome using STAR.
+    No estimation of read abundance/counts is done in this step.
+    STAR options are (at least partly) selected to align with those in ST-pipeline.
+    """
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq",
@@ -691,9 +698,8 @@ rule star_map:
 ###################
 rule sortBam:
     """
-    Index the sorted BAM files
-    Output file to call could be, e.g.,
-    miRNAseq/SMI416/SMI416_genemodel/bams/SMI416-R1.bam.bai
+    Sort input BAM file by name (so read pairs are adjacent in 
+    output file).
     """
     output:
         bam = "results/{prefix}.sortedByName.out.bam",
@@ -715,9 +721,7 @@ rule sortBam:
 
 rule indexBam:
     """
-    Index the sorted BAM files
-    Output file to call could be, e.g.,
-    miRNAseq/SMI416/SMI416_genemodel/bams/SMI416-R1.bam.bai
+    Index BAM file (NB! only works for BAM-files sorted by coordinate:(
     """
     output:
         bai = "results/{prefix}.bam.bai"
@@ -736,6 +740,10 @@ rule indexBam:
         """
 
 rule gffToGtf:
+    """
+    Convert gff-file to gtf file. This enforce use of standard 
+    identifiers, specifically 'gene_id' used by htseq.
+    """
     input:
         gff = "resources/{prefix}.gff"
     output:
@@ -754,6 +762,10 @@ rule gffToGtf:
         """
 
 rule gffToBed:
+    """
+    Convert gff-file to gtf file. This enforce use of standard 
+    identifiers, specifically 'gene_id' used by htseq.
+    """
     input:
         gff = "resources/{prefix}.gff"
     output:
@@ -761,7 +773,7 @@ rule gffToBed:
     log:
         "resources/logs/{prefix}_gffToBed.log"
     conda:
-        "envs/bedops.yaml"
+        "envs/bedops.yml"
     shell:
         """
         exec &> {log}        
@@ -771,15 +783,26 @@ rule gffToBed:
         echo "Done!"
         """
 
-rule rseqcStrand:
+rule checkStrandness:
+    """
+    Parses in out bam-file and reports fractions of reads supporting 
+    - R1=sense+R2=antisense ("1++,1--,2+-,2-+")
+    - R1=antisense+R2=sense ("1+-,1-+,2++,2--")
+    Can be used to predict/check read orientation from library prep
+    and squencing.
+    """
     input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
         bed = "resources/{reftype}/{ref}.bed"
     output:
-        txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.infer_experiment.txt"
-    conda: "envs/rseqc.yaml"
+        txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.inferExperiment.txt"
+    log:
+        "results/logs/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.inferExperiment.log"
+    conda: "envs/rseqc.yml"
     shell:
         """
+        exec &> {log}        
+
         infer_experiment.py \
         -i {input.bam} \
         -r {input.bed} \
@@ -787,14 +810,19 @@ rule rseqcStrand:
         """
 
 
-rule htseqReadCount:
+rule readCountGenome:
+    """
+    Count reads mapping to features ("exons") and clustered into 
+    superfeatures ("gene_id") using htseq-count.
+    Requires a gtf file and thus compatible with a _genome_ reference.
+    """
     input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
         gtf = "resources/{reftype}/{ref}.gtf"
     output:
         counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.abundance.tsv",
     log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.htseqReadCount.log"
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.readCountGenome.log"
     params:
         order = "name", 
         strandedness = lambda wc: "yes" if samples[wc.sample]["strandness"] == "sense" \
@@ -843,11 +871,17 @@ rule htseqReadCount:
 
         """
 
-rule manualReadCount:
+rule readCountTranscriptome:
+    """
+    Count reads mapping to transcripts using a pysam based script.
+    Requires Use this for a _transcriptome_ reference.
+    """
     input:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
     output:
         counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.abundance.tsv"
+    log:
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.readCountTranscriptome.log"
     params:
         minMapq = 0,
         multimappers = "ignore"
@@ -855,8 +889,6 @@ rule manualReadCount:
         "envs/pysam.yml"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60
-    log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.manualReadCount.log"
     conda:
         "envs/pysam.yml"
     script: "src/manualReadCount.py"
