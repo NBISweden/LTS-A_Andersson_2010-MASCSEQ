@@ -16,10 +16,8 @@ localrules:
     all,
     link,
     linkReferenceGenome,
-    
     download_rna,
     multiqc,
-    linkReferenceGenome,
     linkReferenceTranscriptome,
     extractTranscriptsFromGenome,
     gunzipReads,
