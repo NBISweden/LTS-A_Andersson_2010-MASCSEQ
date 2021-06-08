@@ -16,16 +16,13 @@ localrules:
     all,
     link,
     linkReferenceGenome,
-    
     download_rna,
     multiqc,
     linkReferenceGenome,
     linkReferenceTranscriptome,
     extractTranscriptsFromGenome,
     gunzipReads,
-    sortBam,
     indexBam,
-#    manualReadCount,
     rseqcStrand,
     busco_dl,
     busco,
@@ -703,6 +700,8 @@ rule sortBam:
     input:
         bam = "results/{prefix}.sortedByCoord.out.bam"
     conda: "envs/samtools.yml"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60
     shadow: "shallow"
     log:  "results/{prefix}.sortBam.log"
     shell:
@@ -710,7 +709,7 @@ rule sortBam:
         exec &> {log}
         echo "Sorting bam"
         samtools --version
-    	samtools sort -n {input} -o {output.bam} -O bam
+    	samtools sort -T $SNIC_TMP -n {input} -o {output.bam} -O bam
         echo "Done"
         """
 
@@ -852,6 +851,10 @@ rule manualReadCount:
     params:
         minMapq = 0,
         multimappers = "ignore"
+    conda:
+        "envs/pysam.yml"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60
     log:
         "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.manualReadCount.log"
     conda:
