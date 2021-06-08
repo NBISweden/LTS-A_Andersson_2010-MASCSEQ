@@ -21,6 +21,7 @@ for read in infile.fetch(until_eof=True):
         if read.is_unmapped or \
            read.is_reverse or \
            read.template_length < 0 or \
+           read.mapping_quality < snakemake.params.minMapq or \
            (snakemake.params.multimappers == "ignore" and read.get_tag("NH") > 1):
             ignored += 1
             name = "ignore"
