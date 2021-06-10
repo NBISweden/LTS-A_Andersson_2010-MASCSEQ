@@ -230,7 +230,7 @@ rule transabyss:
         R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
-        "results/transabyss/{sample}/{k}/{sample}.{k}-final.fa",
+        temp("results/transabyss/{sample}/{k}/{sample}.{k}-final.fa"),
         "results/transabyss/{sample}/{k}/coverage.hist",
     log:
         "results/logs/transabyss/{sample}.{k}.log"
@@ -261,7 +261,7 @@ rule transabyss_merge:
         expand("results/transabyss/{{sample}}/{k}/{{sample}}.{k}-final.fa",
             k = config["transabyss"]["kmer"])
     output:
-        "results/transabyss/{sample}/merged.fa"
+        "results/transabyss/{sample}/merged.fa.gz"
     log:
         "results/logs/transabyss/{sample}.merge.log"
     conda:
@@ -280,7 +280,8 @@ rule transabyss_merge:
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         transabyss-merge {params.i} --mink {params.mink} --maxk {params.maxk} \
             --out {params.tmpout} --threads {threads} --prefix {params.prefix} > {log} 2>&1
-        mv {params.tmpout} {output}
+        gzip {params.tmpout}
+        mv {params.tmpout}.gz {output}
         """
 
 def trinity_strand_string(wildcards):
@@ -298,7 +299,7 @@ rule trinity:
         R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
-        "results/trinity/{sample}/Trinity.fasta"
+        "results/trinity/{sample}/Trinity.fasta.gz"
     log:
         "results/logs/trinity/{sample}.log"
     conda:
@@ -322,6 +323,7 @@ rule trinity:
         max_mem=$(({params.cpumem} * {threads}))
         Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
         rm {params.R1} {params.R2}
+        gzip {params.tmpdir}/Trinity.fasta
         mv {params.tmpdir}/* {params.outdir}/
         """
 
@@ -912,7 +914,8 @@ rule detonate:
         "results/logs/detonate/{sample}.{assembler}.log"
     params:
         outdir = lambda wildcards, output: os.path.dirname(output[1]),
-        read_length = config["read_length"]
+        read_length = config["read_length"],
+        tmp_fa = "$TMPDIR/{sample}.{assembler}.fa"
     conda:
         "envs/detonate.yml"
     threads: 10
@@ -920,7 +923,8 @@ rule detonate:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
     shell:
         """
-        rsem-eval-calculate-score {input.R1},{input.R2} {input.fa} \
+        gunzip -c {input.fa} > {params.tmp_fa}
+        rsem-eval-calculate-score {input.R1},{input.R2} {params.tmp_fa} \
             {params.outdir}/{wildcards.sample} {params.read_length} -p {threads} >{log} 2>&1
         """
 
@@ -944,9 +948,8 @@ rule transdecoder_longorfs:
     params:
         gencode=lambda wildcards: genetic_code(wildcards),
         tmpdir="$TMPDIR/{assembler}.{sample}",
-        ln="$TMPDIR/{assembler}.{sample}/{sample}",
-        fa=lambda wildcards, input: os.path.abspath(input[0]),
-        outdir=lambda wildcards, output: os.path.dirname(output[0])
+        fa="$TMPDIR/{assembler}.{sample}/{sample}",
+        outdir=lambda wildcards, output: os.path.dirname(output[0]),
     log: "results/logs/transdecoder/{assembler}.{sample}.longorfs.log"
     conda: "envs/transdecoder.yml"
     shadow: "full"
@@ -957,8 +960,8 @@ rule transdecoder_longorfs:
         exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         mkdir -p {params.tmpdir}
-        ln -s {params.fa} {params.ln}
-        TransDecoder.LongOrfs -G {params.gencode} -O {params.outdir} -t {params.ln}
+        gunzip -c {input[0]} > {params.fa}
+        TransDecoder.LongOrfs -G {params.gencode} -O {params.outdir} -t {params.fa}
         rm -rf {params.tmpdir}
         """
 
@@ -997,14 +1000,14 @@ rule filter_to_CDS:
         fa = assembly_input,
         gff = "results/transdecoder/{assembler}/{sample}/{sample}.transdecoder.gff3"
     output:
-        "results/{assembler}/{sample}/{sample}.filtered.fasta"
+        "results/{assembler}/{sample}/{sample}.filtered.fasta.gz"
     params:
         ids = "$TMPDIR/{sample}.ids"
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
         cat {input.gff} | awk '{{if ($3=="CDS") print $1}}' | uniq > {params.ids}
-        seqtk subseq {input.fa} {params.ids} > {output}
+        seqtk subseq {input.fa} {params.ids} | gzip -c > {output}
         """
 
 rule busco_dl:
