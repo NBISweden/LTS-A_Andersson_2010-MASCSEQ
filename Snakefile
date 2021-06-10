@@ -61,7 +61,7 @@ rule all:
     input:
         "results/multiqc/multiqc.html",
         busco_input(samples, config),
-        expand("results/{assembler}/{sample}/{sample}.filtered.fasta",
+        expand("results/{assembler}/{sample}/{sample}.filtered.fasta.gz",
             assembler = config["assemblers"],
             sample = [sample for sample in samples.keys() if samples[sample]["type"] == "transcriptome"])
         #kallisto_output(samples, config)
