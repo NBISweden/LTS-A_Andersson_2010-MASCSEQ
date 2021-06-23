@@ -13,9 +13,9 @@ def read_samples(f):
 
 def assembly_input(wildcards):
     if wildcards.assembler == "transabyss":
-        i = "merged.fa"
+        i = "merged.fa.gz"
     elif wildcards.assembler == "trinity":
-        i = "Trinity.fasta"
+        i = "Trinity.fasta.gz"
     return f"results/{wildcards.assembler}/{wildcards.sample}/{i}"
 
 
