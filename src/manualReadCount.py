@@ -1,7 +1,14 @@
-import pysam, re
+import pysam, re, sys
 
-def getContig(x):
-    return re.sub ("transcript:","", re.sub(".t1", "", x.reference_name))
+def getContig(x, feature):
+    ret= re.sub ("transcript:","", re.sub(".t1", "", x.reference_name))
+    if feature == "genes":
+        ret = re.sub("_\w\d\Z","",ret)
+    return(ret)
+
+mylog = open(snakemake.log.log,'wt')
+sys.stdout=mylog
+sys.stderr=mylog
 
 
 ### main ###
@@ -27,23 +34,27 @@ for read in infile.fetch(until_eof=True):
             name = "ignore"
             continue
         else:
-            contig = getContig(read) #read.reference_name
-            score = 1.0/read.get_tag("NH")
+            contig = getContig(read, snakemake.params.feature) #read.reference_name
+            score = 1.0 #/read.get_tag("NH")
+            if score > 1.0:
+                print("ERROR: Read pair matesScore should not be higher than 1.0")
+                sys.exit(-1)
     else:
         if name != "ignore":
             if read.is_unmapped or \
-               not read.is_reverse \
-               or (snakemake.params.multimappers == "ignore" and read.get_tag("NH") > 1):
+               not read.is_reverse or \
+               read.mapping_quality < snakemake.params.minMapq or \
+               (snakemake.params.multimappers == "ignore" and read.get_tag("NH") > 1):
                 ignored +=1
             else:
                 if name != read.query_name:
                     print("ERROR: Read pair mates not in order")
                     sys.exit(-1)
-                if  contig != getContig(read): #read.reference_name:
+                if  contig != getContig(read, snakemake.params.feature): 
                     print("ERROR: Read pair contig not matching")
                     sys.exit(-1)
                 if read.mapping_quality > snakemake.params.minMapq:
-                    if snakemake.params.multimappers != "ignore" and score != 1.0/read.get_tag("NH"):
+                    if snakemake.params.multimappers != "ignore" and score != 1.0: 
                         print("ERROR: Read pair mates multimaps differently")
                         sys.exit(-1)
                     else:
@@ -61,3 +72,4 @@ for contig in dbReadPass.keys():
                 
 infile.close()
 outfile.close()
+mylog.close()
