@@ -21,6 +21,9 @@ properties:
     type: string
     enum: ["genome", "transcriptome"]
     description: Type of analysis
+  stResults:
+    type: string
+    description: Path to xxx_stdata.tsv output file from st pipeline
 
 required:
   - sample_id
@@ -28,3 +31,4 @@ required:
   - R2
   - reference
   - type
+  - stResults
