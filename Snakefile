@@ -398,7 +398,7 @@ rule extractTranscriptsFromGenome:
 
 # Mapping with kallisto
 #   - works only with transcriptome reference files
-#   - handles multimappers
+#   - handles multimappers very well
 #   - uses hashed pseudo-alignment approach (fast)
 #   - outputs read abundance/counts directly (no extra program)
 ###############################################################
@@ -469,6 +469,13 @@ rule kallisto_map:
         echo "Done!"
         """
 
+# Mapping withSTAR
+#   - works both with transcriptome and genome reference
+#   - handles multimappers (simplifyingly)
+#   (- rather slow)
+#   - Mapping only by STAR, separate rules/programs
+#     (htseq/in-house script) for read abundance/counts 
+###############################################################
 rule star_index_transcriptome:
     """
     Creates a STAR index file from a gzipped fasta file of transcript sequences
