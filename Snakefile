@@ -28,8 +28,9 @@ localrules:
     gffToGtf,
     gffToBed,
     filter_to_CDS,
-    collateSummedStAndBulkRnaSeqAbundance
-
+    collateSummedStAndBulkRnaSeqAbundance,
+    stVsBulkComparison
+    
 def busco_input(samples, config):
     files = []
     for sample, lineage in config["busco"]["sample_lineages"].items():
