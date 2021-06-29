@@ -485,7 +485,11 @@ rule star_index_transcriptome:
     input:
         fasta = "resources/{reftype}/{ref}.fasta.gz"
     output:
-        index = directory("resources/{reftype, transcriptome.*}/star/{ref}.idx")
+        # index = directory("resources/{reftype,transcriptome.*}/star/{ref}.idx")
+        index = expand("resources/{{reftype, transcriptome.*}}/star/{{ref}}.idx/{f}",
+                       f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
+                              "chrStart.txt", "Genome", "genomeParameters.txt",
+                              "Log.out", "SA", "SAindex" ])
     log:
         "resources/logs/{reftype}/star/{ref}_star_index.log"
     params:
@@ -541,7 +545,11 @@ rule star_index_genome:
         fasta = "resources/{reftype}/{ref}.fasta.gz",
         gff = "resources/{reftype}/{ref}.gff"
     output:
-        index = directory("resources/{reftype}/star/{ref}.idx")
+        # index = directory("resources/{reftype,genome.*}/star/{ref}.idx")
+        index = expand("resources/{{reftype, genome.*}}/star/{{ref}}.idx/{f}",
+                       f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
+                              "chrStart.txt", "Genome", "genomeParameters.txt",
+                              "Log.out", "SA", "SAindex" ])
     log:
         "results/logs/{reftype}/{ref}_star_index.log"
     params:
@@ -627,7 +635,11 @@ rule star_map:
     input:
         R1 = "results/sortmerna/{sample}.{RNA}_fwd.fastq",
         R2 = "results/sortmerna/{sample}.{RNA}_rev.fastq",
-        index = "resources/{reftype}/star/{ref}.idx"
+        # index = "resources/{reftype}/star/{ref}.idx"
+        index = expand("resources/{{reftype}}/star/{{ref}}.idx/{f}",
+                       f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
+                              "chrStart.txt", "Genome", "genomeParameters.txt",
+                              "Log.out", "SA", "SAindex" ])
     output:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
 #        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
@@ -635,7 +647,7 @@ rule star_map:
         SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.SJ.out.tab",
 #        unmapped = "results/{reftype}/star/{ref}/{sample}.{RNA}.unmapped.fastq"
     log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
+        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
     params:
         outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}."
     threads: 8
@@ -711,7 +723,7 @@ rule sortBam:
     output file).
     """
     output:
-        bam = "results/{prefix}.sortedByName.out.bam",
+        bam = temp("results/{prefix}.sortedByName.out.bam")
     input:
         bam = "results/{prefix}.sortedByCoord.out.bam"
     conda: "envs/samtools.yml"
@@ -911,82 +923,14 @@ rule readCountTranscriptome:
 rule collateSummedStAndBulkRnaSeqAbundance:
     input:
         st = lambda wc: samples[wc.sample]["stResults"],
-        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.abundance.tsv",
+        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.transcripts.abundance.tsv"
     output:
-        tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundance.tsv"
-    log: "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundance.log"
-    run:
-        db = {}
-        st = open(input.st, 'rt')
-        sumst = 0
-        for row in st:
-            row = row.strip("\n").split("\t")
-            if len(db) == 0:
-                for n,val in enumerate(row):
-                    if val != "":
-                        if val in db.keys():
-                            print("Error: id {} appears twice in st RNAseq results". format(val))
-                            sys.exit(-1)
-                        db[val] = {
-                            "col" : n,
-                            "st" : 0
-                        }
-            else:
-                for id in db.keys():
-                    db[id]["st"] += float(row[db[id]["col"]])
-                    sumst += float(row[db[id]["col"]])
-        st.close()
-
-        bulk = open(input.bulk, 'rt')
-        sumbulk = 0
-        k=0
-        for row in bulk:
-            row = row.strip().split("\t")
-            id = row[0]
-            if id not in db.keys():
-
-                
-                print("Warning: id {i}, with bulk abundance {a}, is missing in st RNAseq results".format(i=id, a=row[1]))
-                db[id] = {
-                    "st" : -1,
-                    "bulk" : float(row[1])
-                }
-                sumbulk += float(row[1])
-                #out.write("{id}\t{st}\t{b}\n".format(id=id, st=0, b=row[1]))
-                k += 1
-            else:
-                if "bulk" in db[id].keys():
-                    print("Error: transcript {} appears twice in bulk RNAseq results". format(id))
-                    sys.exit(-1)
-                db[id]["bulk"] = float(row[1])
-                sumbulk += float(row[1])
-                #out.write("{id}\t{st}\t{b}\n".format(id=id, st=db[id], b=row[1]))
-                #db[id] = -1
-        bulk.close()
-
-        out = open(output.tsv, 'wt')
-        out.write("transcript\tcount_st\tcount_bulk\tCPM_st\tCPM_bulk\n")
-        
-        n = 0
-        m = 0
-        for id in db.keys():
-            if "bulk" not in db[id].keys():
-                print("Warning: transcript {i}, with st abundance {a}, is missing in bulk RNAseq results".format(i=id, a = db[id]))
-                db[id]["bulk"] = -1
-                m+=1
-            elif "st" in db[id].keys():
-                n+=1
-            out.write("{id}\t{cst}\t{cb}\t{tst}\t{tb}\n".format(id=id,
-                                                                cst=db[id]["st"],
-                                                                cb=db[id]["bulk"],
-                                                                tst="{:.2E}".format(db[id]["st"]/sumst if db[id]["st"] != -1 else -1),
-                                                                tb="{:.2E}".format(db[id]["bulk"]/sumbulk if db[id]["bulk"] != -1 else -1)))
-        print("Found {} common transcrips between st and bulk seq".format(n))
-        print("{} transcripts was missing from st RNAseq".format(k))
-        print("{} transcripts was missing from bulk RNAseq".format(m))
-
-        out.close()
-            
+        tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature,genes|transcripts}.stAndBulkAbundance.tsv"
+    params:
+        doGeneLevel = lambda wc: True if wc.feature == "genes" else False
+    log:
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature}.stAndBulkAbundance.log"
+    script: "src/collateSummedStAndBulkRnaSeqAbundance.py"
 
 
 ###################
