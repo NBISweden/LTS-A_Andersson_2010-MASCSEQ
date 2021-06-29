@@ -77,14 +77,14 @@ transcripts[transcripts$count_st<0, "count_st"] = -10000
 transcripts[transcripts$count_bulk<0, "count_bulk"] = -10000
 posTranscripts = transcripts[transcripts$count_st >= 0 & transcripts$count_bulk >= 0,]
 
-pearsonTranscripts = cor(posTranscripts$count_st, posTranscripts$count_bulk, method = "pearson")
-spearmanTranscripts = cor(posTranscripts$count_st, posTranscripts$count_bulk, method = "spearman")
+pearsonTranscripts = cor.test(posTranscripts$count_st, posTranscripts$count_bulk, method = "pearson", alternative = "two.sided")
+spearmanTranscripts = cor.test(posTranscripts$count_st, posTranscripts$count_bulk, method = "spearman", alternative = "two.sided")
 
 ```
 
-The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). The Pearson correlation coefficient is $r = `r pearsonTranscripts`$, the Spearman correlation is $\rho = `r spearmanTranscripts`$.
+The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). The Pearson correlation coefficient is $r = `r pearsonTranscripts$estimate` (p=`r sprintf("%.2E",pearsonTranscripts$p.value)`)$, the Spearman correlation is $\rho = `r spearmanTranscripts$estimate` (`r sprintf("%.2E", spearmanTranscripts$p.value)`)$.
 
-```{r plotTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonTranscripts), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanTranscripts), "$; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+```{r plotTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) linear axes and (B) log2-transformed axes; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
 
 p1 = ggplot(transcripts, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
@@ -109,12 +109,14 @@ genes[genes$count_st<0, "count_st"] = -10000
 genes[genes$count_bulk<0, "count_bulk"] = -10000
 posGenes = genes[genes$CPM_st >= 0 & genes$count_bulk >= 0,]
 
-pearsonGenes = cor(posGenes$count_st, posGenes$count_bulk, method = "pearson")
-spearmanGenes = cor(posGenes$count_st, posGenes$count_bulk, method = "spearman")
+pearsonGenes = cor.test(posGenes$count_st, posGenes$count_bulk, method = "pearson", alternative = "two.sided")
+spearmanGenes = cor.test(posGenes$count_st, posGenes$count_bulk, method = "spearman", alternative = "two.sided")
 ```
-The result of the correlation analysis on genes level counts is shown in Figure \@ref(fig:plotGenes). The Pearson correlation coefficient is  $r = `r pearsonGenes`$, the Spearman correlation is $\rho = `r spearmanGenes`$.
+The result of the correlation analysis on genes level counts is shown in Figure \@ref(fig:plotGenes). 
+The Pearson correlation coefficient is $r = `r pearsonGenes$estimate` (p=`r sprintf("%.2E",pearsonGenes$p.value)`)$, the Spearman correlation is $\rho = `r spearmanGenes$estimate` (`r sprintf("%.2E", spearmanGenes$p.value)`)$.
 
-```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonGenes), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanGenes), "$; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+
+```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) linear axes and (B) log2-transformed axes; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
 
 p3 = ggplot(genes, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
