@@ -1,0 +1,134 @@
+---
+title: | 
+       | <font size="16">`r params$title`</font>.
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    code_folding: hide
+params:
+  title: "stVsBulkComparison"
+  runDirectory: '../'
+  transcriptsFile: results/transcriptome/star/Heterocapsa/comparisons/P18363_103.mRNA.transcripts.stAndBulkAbundance.tsv
+  genesFile: results/transcriptome/star/Heterocapsa/comparisons/P18363_103.mRNA.genes.stAndBulkAbundance.tsv
+---
+
+```{r setup, include=FALSE, message=FALSE}
+library(knitr)
+library(edgeR)
+library(kableExtra)
+library(ggplot2)
+library(cowplot)
+
+opts_knit$set(root.dir=normalizePath(params$runDirectory), eval.after='fig.cap') # needed to get working dir right
+knitr::opts_chunk$set(
+	eval = TRUE,
+	echo = FALSE,
+	error = FALSE,
+	fig.height = 3,
+	fig.width = 6,
+	message = FALSE,
+	warning = FALSE,
+	out.width = "100%",
+	eval.after='fig.cap'
+)
+inline_hook <- function (x) {
+  if (is.numeric(x)) {
+    # ifelse does a vectorized comparison
+    # If integer, print without decimal; otherwise print two places
+    res <- ifelse(x == round(x),
+      sprintf("%d", x),
+      sprintf("%.2f", x)
+    )
+    paste(res, collapse = ", ")
+  }
+  else{
+    x
+  }
+}
+knit_hooks$set(inline = inline_hook)
+
+showcode=TRUE
+myfontsize = 12
+options(knitr.table.format='html')
+
+```
+
+# Material & Methods
+
+- Raw read counts (abundance) data from the analyses of data from the stpipeline ("st data") and bulk RNaseq data ("bulk data") were used as input. The st data read counts for each gene were summed over spots
+- Pearson correlation coefficient $R$ was performed on genes with positive-valued data (see note below) using the R-function `cor`
+- The correlation analysis was visualized using scatterplots; to enhance visibility in spite of outliers, an additional plot with both axes $log2$-transformed was performed.
+- A correlation line was estimated using a linear model in the plots (this was based on positive values only, see below).
+
+## Notes:
+
+- If read counts is missing for a gene for the st (bulk) analysis, a large negative dummy value is assigned as the st (bulk) result for that gene. 
+- Using CPM-transformed data only changed the plots by changes the scale of the x- and y-axes.
+
+# Results
+
+## Transcripts
+```{r transcripts}
+
+transcripts = read.delim(params$transcriptsFile)
+transcripts[transcripts$count_st<0, "count_st"] = -10000
+transcripts[transcripts$count_bulk<0, "count_bulk"] = -10000
+posTranscripts = transcripts[transcripts$count_st >= 0 & transcripts$count_bulk >= 0,]
+
+pearsonTranscripts = cor(posTranscripts$count_st, posTranscripts$count_bulk, method = "pearson")
+spearmanTranscripts = cor(posTranscripts$count_st, posTranscripts$count_bulk, method = "spearman")
+
+```
+
+The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). The Pearson correlation coefficient i  $r = `r pearsonTranscripts`$, the Spearman correlation is $\rho = `r spearmanTranscripts`$.
+
+```{r plotTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonTranscripts), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanTranscripts), "$; the blue line is the linear model-fitted regression line $bulk \\sim st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+
+p1 = ggplot(transcripts, aes(count_st, count_bulk)) +
+  geom_point(size=0.5, color="red") + 
+  geom_smooth(data=posTranscripts, aes(count_st, count_bulk), method = "lm", se = FALSE)+
+  theme_cowplot(8)
+  
+p2 = ggplot(posTranscripts, aes(count_st, count_bulk)) +
+  geom_point(size=0.5, color="red") + 
+  scale_x_continuous(trans='log2') +
+  scale_y_continuous(trans='log2') +
+  geom_smooth(method = "lm", se = FALSE)+
+  theme_cowplot(8)
+
+plot_grid(p1,p2, labels = c("A","B"), label_size=8)
+```
+
+## Genes
+
+```{r genes}
+genes = read.delim(params$genesFile)
+genes[genes$count_st<0, "count_st"] = -10000
+genes[genes$count_bulk<0, "count_bulk"] = -10000
+posGenes = genes[genes$CPM_st >= 0 & genes$count_bulk >= 0,]
+
+pearsonGenes = cor(posGenes$count_st, posGenes$count_bulk, method = "pearson")
+spearmanGenes = cor(posGenes$count_st, posGenes$count_bulk, method = "spearman")
+```
+The result of the correlation analysis on genes level counts is shown in Figure \@ref(fig:plotGenes). The Pearson correlation coefficient is  $r = `r pearsonGenes`$, the Spearman correlation is $\rho = `r spearmanGenes`$.
+
+```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonGenes), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanGenes), "$; the blue line is the linear model-fitted regression line $bulk \\sim st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+
+p3 = ggplot(genes, aes(count_st, count_bulk)) +
+  geom_point(size=0.5, color="red") + 
+  geom_smooth(data=posGenes, aes(count_st, count_bulk), method = "lm", se = FALSE) +
+  theme_cowplot(8)
+
+p4 = ggplot(posGenes, aes(count_st, count_bulk)) +
+  geom_point(size=0.5, color="red") + 
+  scale_x_continuous(trans='log2') +
+  scale_y_continuous(trans='log2') + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_cowplot(8)
+
+plot_grid(p3, p4, labels = c("A","B"), label_size=8)
+
+```

@@ -1,0 +1,13 @@
+name: edgeR
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base
+  - r-bookdown
+  - r-knitr
+  - r-kableextra
+  - r-dplyr
+  - r-ggplot2
+  - r-cowplot
+  - pandoc

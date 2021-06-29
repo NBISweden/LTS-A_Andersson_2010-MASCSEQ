@@ -933,6 +933,48 @@ rule collateSummedStAndBulkRnaSeqAbundance:
     script: "src/collateSummedStAndBulkRnaSeqAbundance.py"
 
 
+rule stVsBulkComparison:
+    input:
+        transcriptsFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.transcripts.stAndBulkAbundance.tsv",
+        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.genes.stAndBulkAbundance.tsv"
+    output:
+        html = "reports/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
+    log:
+        log = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+    conda: "envs/rmarkdown.yml"
+    params:
+        script = "src/stVsBulkComparison.Rmd",
+        title = lambda wc: "Report from the read count comparison " \
+            "between stpipeline and bulk RNAseq for sample _{sample}_ {rna} mapped to the _{ref}_ {refType}".format(
+                sample = wc.sample,
+                rna = wc.RNA,
+                ref = wc.ref,
+                refType = wc.refType
+            ),
+        runDir = prependPwd(""),
+        outDir = "reports/{refType}/star/{ref}/comparisons/"
+    shell:
+        """
+        exec &> {log}
+
+        echo -e "
+        myparams = list(
+            title = '{params.title}',
+            runDirectory = '{params.runDir}',
+            transcriptsFile = '{input.transcriptsFile}',
+            genesFile = '{input.genesFile}'
+        )
+        library(rmarkdown)
+        render('{params.script}', output_format='bookdown::html_document2', 
+               output_file='{output.html}', output_dir='{params.outDir}', 
+               params=myparams, intermediates_dir='$SNIC_TMP')
+        "|R --vanilla
+        echo "Done"
+
+        """
+        
+
+
 ###################
 ### ASSEMBLY QC ###
 ###################
