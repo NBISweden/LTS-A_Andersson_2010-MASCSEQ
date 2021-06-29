@@ -6,6 +6,9 @@ set -e
 
 # get the workflow base directory (=where this script reside)
 DIR=${0%runSnakemake.sh}
+if [ -z "$DIR" ]; then
+    DIR="."
+fi
 
 # Default conda is currently a bit unstable, so we want to use the alternative
 # mamba implementation instead
@@ -64,6 +67,8 @@ if [ "$CLUSTER" = "rackham" ]; then # Change/add cluster name if needed
     #                  next line (NB! no space or text after the `\`)
 else
     # When run locally, we don't need --cluster-config or --cluster
+    # but we need to set up a dummy value for variable SNIC_TMP, required by some rules
+    export SNIC_TMP="."
     time snakemake \
 	 --conda-frontend mamba \
 	 -j \
