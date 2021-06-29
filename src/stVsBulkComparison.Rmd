@@ -17,7 +17,6 @@ params:
 
 ```{r setup, include=FALSE, message=FALSE}
 library(knitr)
-library(edgeR)
 library(kableExtra)
 library(ggplot2)
 library(cowplot)
@@ -59,14 +58,14 @@ options(knitr.table.format='html')
 # Material & Methods
 
 - Raw read counts (abundance) data from the analyses of data from the stpipeline ("st data") and bulk RNaseq data ("bulk data") were used as input. The st data read counts for each gene were summed over spots
-- Pearson correlation coefficient $R$ was performed on genes with positive-valued data (see note below) using the R-function `cor`
+- Pearson correlation coefficient $r$ and Spearman's rank correlation ooefficient $\rho$  was performed on genes with positive-valued data (see note below) using the R-function `cor`
 - The correlation analysis was visualized using scatterplots; to enhance visibility in spite of outliers, an additional plot with both axes $log2$-transformed was performed.
 - A correlation line was estimated using a linear model in the plots (this was based on positive values only, see below).
 
 ## Notes:
 
-- If read counts is missing for a gene for the st (bulk) analysis, a large negative dummy value is assigned as the st (bulk) result for that gene. 
-- Using CPM-transformed data only changed the plots by changes the scale of the x- and y-axes.
+- If read counts is missing for a gene for the st (bulk) analysis, a large negative dummy value is assigned as the st (bulk) result for that gene. Negative values are not included in the correlation analysis, but are shown, fo completeness, in some plots.
+- All analyses are performed on raw counts data; using CPM-transformed data only changed the plots by changing the scale of the x- and y-axes.
 
 # Results
 
@@ -83,9 +82,9 @@ spearmanTranscripts = cor(posTranscripts$count_st, posTranscripts$count_bulk, me
 
 ```
 
-The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). The Pearson correlation coefficient i  $r = `r pearsonTranscripts`$, the Spearman correlation is $\rho = `r spearmanTranscripts`$.
+The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). The Pearson correlation coefficient is $r = `r pearsonTranscripts`$, the Spearman correlation is $\rho = `r spearmanTranscripts`$.
 
-```{r plotTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonTranscripts), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanTranscripts), "$; the blue line is the linear model-fitted regression line $bulk \\sim st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+```{r plotTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonTranscripts), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanTranscripts), "$; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
 
 p1 = ggplot(transcripts, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
@@ -94,8 +93,8 @@ p1 = ggplot(transcripts, aes(count_st, count_bulk)) +
   
 p2 = ggplot(posTranscripts, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
-  scale_x_continuous(trans='log2') +
-  scale_y_continuous(trans='log2') +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
   geom_smooth(method = "lm", se = FALSE)+
   theme_cowplot(8)
 
@@ -115,7 +114,7 @@ spearmanGenes = cor(posGenes$count_st, posGenes$count_bulk, method = "spearman")
 ```
 The result of the correlation analysis on genes level counts is shown in Figure \@ref(fig:plotGenes). The Pearson correlation coefficient is  $r = `r pearsonGenes`$, the Spearman correlation is $\rho = `r spearmanGenes`$.
 
-```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonGenes), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanGenes), "$; the blue line is the linear model-fitted regression line $bulk \\sim st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) linear axes and (B) log2-transformed axes. Pearson correlation $r = ", sprintf("%.2f", pearsonGenes), "$; Spearman correlation $\\rho = ", sprintf("%.2f", spearmanGenes), "$; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
 
 p3 = ggplot(genes, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
@@ -124,8 +123,8 @@ p3 = ggplot(genes, aes(count_st, count_bulk)) +
 
 p4 = ggplot(posGenes, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
-  scale_x_continuous(trans='log2') +
-  scale_y_continuous(trans='log2') + 
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') + 
   geom_smooth(method = "lm", se = FALSE) +
   theme_cowplot(8)
 
