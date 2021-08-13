@@ -13,6 +13,7 @@ params:
   runDirectory: '../'
   transcriptsFile: results/transcriptome/star/Heterocapsa/comparisons/P18363_103.mRNA.transcripts.stAndBulkAbundance.tsv
   genesFile: results/transcriptome/star/Heterocapsa/comparisons/P18363_103.mRNA.genes.stAndBulkAbundance.tsv
+  doTranscripts: "TRUE"
 ---
 
 ```{r setup, include=FALSE, message=FALSE}
@@ -52,82 +53,106 @@ knit_hooks$set(inline = inline_hook)
 showcode=TRUE
 myfontsize = 12
 options(knitr.table.format='html')
+doTranscripts = ifelse(params$doTranscripts == "TRUE", TRUE, FALSE)
+if(doTranscripts){
 
+message("####### doTranscript is TRUE ######")
+}else{
+message("####### doTranscript is FALSE ######")
+}
 ```
 
 # Material & Methods
 
 - Raw read counts (abundance) data from the analyses of data from the stpipeline ("st data") and bulk RNaseq data ("bulk data") were used as input. The st data read counts for each gene were summed over spots
 - Pearson correlation coefficient $r$ and Spearman's rank correlation ooefficient $\rho$  was performed on genes with positive-valued data (see note below) using the R-function `cor`
-- The correlation analysis was visualized using scatterplots; to enhance visibility in spite of outliers, an additional plot with both axes $log2$-transformed was performed.
-- A correlation line was estimated using a linear model in the plots (this was based on positive values only, see below).
+- I have tentatively added correlation of log2-transformed count data also. This idea came from remembering that count data is almost always log2-transformed in expression analysis. The reason often stated for log2-transformation is that raw counts are very sensitive to outliers. I have noted that the (Pearson) correlation analysis is also affected heavily by outliers (at least fro some analyses), so it might make sense to use log2-transformation also here. HOIWEVER! This needs to be thought through properly, so treat the log2-transformed analyses with a bit of suspiciion for the time being!
+- Pearson correlation  test for a *linear* relationship between variables, while Spearman correlation tests for a *monotonic* relationship between variables, i.e., variables may co-vary, but the correlation does not need to be a linear function. Hence it makes sense that it is the Pearson correlation that is affected by the log2-transformation.
+- The correlation analysis was visualized using scatterplots, bith for the raw and the log2-transformed counts.
+- A "correlation" (actually regression) line was estimated using a linear modl, $bulk\sim st$, in the plots (this was based on raw or log2-transformed positive values only, respectively). This is for a rough visualization of the correlation only (note that the regression would likely change sligthly if the reverse linear model was used, i.e., $st \sim bulk$).
 
 ## Notes:
 
-- If read counts is missing for a gene for the st (bulk) analysis, a large negative dummy value is assigned as the st (bulk) result for that gene. Negative values are not included in the correlation analysis, but are shown, fo completeness, in some plots.
-- All analyses are performed on raw counts data; using CPM-transformed data only changed the plots by changing the scale of the x- and y-axes.
+- For the st results, read counts are missing for some genes. Similarly, for the bulk results, there are no missing read counts for genes, but there are genes with a zero-valued read count. It is possible that this also indicates missing values or values below detection (There appear to be no zero-valued read counts in the st results). In both these case, a (large) negative dummy value is assigned as the read count for that gene. Negative values are not included in the correlation analysis, but are shown, for completeness, in some plots.
+- Using CPM-transformed data only changed the plots by changing the scale of the x- and y-axes, so it is not used in this analysis.
 
 # Results
 
+`r if(!doTranscripts){"<!--"}`
 ## Transcripts
-```{r transcripts}
+```{r transcripts, eval=doTranscripts}
 
 transcripts = read.delim(params$transcriptsFile)
-transcripts[transcripts$count_st<0, "count_st"] = -10000
-transcripts[transcripts$count_bulk<0, "count_bulk"] = -10000
-posTranscripts = transcripts[transcripts$count_st >= 0 & transcripts$count_bulk >= 0,]
+transcripts[transcripts$count_st<=0, "count_st"] = -max(transcripts$count_st)/5 #-10000
+transcripts[transcripts$count_bulk<=0, "count_bulk"] = -max(transcripts$count_bulk)/5 #-10000
+
+posTranscripts = transcripts[transcripts$count_st > 0 & transcripts$count_bulk > 0,]
 
 pearsonTranscripts = cor.test(posTranscripts$count_st, posTranscripts$count_bulk, method = "pearson", alternative = "two.sided")
 spearmanTranscripts = cor.test(posTranscripts$count_st, posTranscripts$count_bulk, method = "spearman", alternative = "two.sided")
 
+# Run correlation on log2-transformed values as well.
+posTranscripts$log_count_st =log2(posTranscripts$count_st)
+posTranscripts$log_count_bulk =log2(posTranscripts$count_bulk)
+log_pearsonTranscripts = cor.test(posTranscripts$log_count_st, posTranscripts$log_count_bulk, method = "pearson", alternative = "two.sided")
+log_spearmanTranscripts = cor.test(posTranscripts$log_count_st, posTranscripts$log_count_bulk, method = "spearman", alternative = "two.sided")
+
 ```
 
-The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). The Pearson correlation coefficient is $r = `r pearsonTranscripts$estimate` (p=`r sprintf("%.2E",pearsonTranscripts$p.value)`)$, the Spearman correlation is $\rho = `r spearmanTranscripts$estimate` (`r sprintf("%.2E", spearmanTranscripts$p.value)`)$.
+The result of the correlation analysis on transcripts level counts is shown in Figure \@ref(fig:plotTranscripts). For unlogged data, the Pearson correlation coefficient is $r = `r if(doTranscripts){pearsonTranscripts$estimate}` (p=`r if(doTranscripts){sprintf("%.2E",pearsonTranscripts$p.value)}`)$, the Spearman correlation is $\rho = `r if(doTranscripts){spearmanTranscripts$estimate}` (p=`r if(doTranscripts){sprintf("%.2E", spearmanTranscripts$p.value)}`)$.
 
-```{r plotTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) linear axes and (B) log2-transformed axes; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+For 2-logged data, the Pearson correlation coefficient is $r = `r if(doTranscripts){log_pearsonTranscripts$estimate}` (p=`r if(doTranscripts){sprintf("%.2E",log_pearsonTranscripts$p.value)}`)$, the Spearman correlation is $\rho = `r if(doTranscripts){log_spearmanTranscripts$estimate}` (p=`r if(doTranscripts){sprintf("%.2E", log_spearmanTranscripts$p.value)}`)$.
+
+```{r plotTranscripts, eval=doTranscripts, fig.cap = paste0("Correlation plots for transcript-level read count analysis with (A) raw counts and (B) log2-transformed counts; the dotted blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
 
 p1 = ggplot(transcripts, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
-  geom_smooth(data=posTranscripts, aes(count_st, count_bulk), method = "lm", se = FALSE)+
+  geom_smooth(data=posTranscripts,
+	aes(count_st, count_bulk), method = "lm", se = FALSE, linetype="11", size=0.5) +
   theme_cowplot(8)
   
-p2 = ggplot(posTranscripts, aes(count_st, count_bulk)) +
+p2 = ggplot(posTranscripts, aes(log_count_st, log_count_bulk)) +
   geom_point(size=0.5, color="red") + 
-  scale_x_continuous(trans='log10') +
-  scale_y_continuous(trans='log10') +
-  geom_smooth(method = "lm", se = FALSE)+
+  geom_smooth(method = "lm", se = FALSE, linetype="11", size=0.5)+
   theme_cowplot(8)
 
 plot_grid(p1,p2, labels = c("A","B"), label_size=8)
 ```
-
+`r if(!doTranscripts){"-->"}`
 ## Genes
 
 ```{r genes}
 genes = read.delim(params$genesFile)
-genes[genes$count_st<0, "count_st"] = -10000
-genes[genes$count_bulk<0, "count_bulk"] = -10000
-posGenes = genes[genes$CPM_st >= 0 & genes$count_bulk >= 0,]
+genes[genes$count_st<=0, "count_st"] = -max(genes$count_st)/5 #-10000
+genes[genes$count_bulk<=0, "count_bulk"] = -max(genes$count_bulk)/5 #-10000
+posGenes = genes[genes$count_st > 0 & genes$count_bulk > 0,]
 
 pearsonGenes = cor.test(posGenes$count_st, posGenes$count_bulk, method = "pearson", alternative = "two.sided")
 spearmanGenes = cor.test(posGenes$count_st, posGenes$count_bulk, method = "spearman", alternative = "two.sided")
+
+posGenes$log_count_st =log2(posGenes$count_st)
+posGenes$log_count_bulk =log2(posGenes$count_bulk)
+log_pearsonGenes = cor.test(posGenes$log_count_st, posGenes$log_count_bulk, method = "pearson", alternative = "two.sided")
+log_spearmanGenes = cor.test(posGenes$log_count_st, posGenes$log_count_bulk, method = "spearman", alternative = "two.sided")
+
 ```
+
 The result of the correlation analysis on genes level counts is shown in Figure \@ref(fig:plotGenes). 
-The Pearson correlation coefficient is $r = `r pearsonGenes$estimate` (p=`r sprintf("%.2E",pearsonGenes$p.value)`)$, the Spearman correlation is $\rho = `r spearmanGenes$estimate` (`r sprintf("%.2E", spearmanGenes$p.value)`)$.
+For the unlogged data, the Pearson correlation coefficient is $r = `r pearsonGenes$estimate`\ (p=`r sprintf("%.2E",pearsonGenes$p.value)`)$, the Spearman correlation is $\rho = `r spearmanGenes$estimate`\ (p=`r sprintf("%.2E", spearmanGenes$p.value)`)$.
+
+For the 2-logged data, the Pearson correlation coefficient is $r = `r log_pearsonGenes$estimate` (p=`r sprintf("%.2E",log_pearsonGenes$p.value)`)$, the Spearman correlation is $\rho = `r log_spearmanGenes$estimate` (`r sprintf("%.2E", log_spearmanGenes$p.value)`)$.
 
 
-```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) linear axes and (B) log2-transformed axes; the blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+```{r plotGenes, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) raw counts and (B) log2-transformed counts; the dotted blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
 
 p3 = ggplot(genes, aes(count_st, count_bulk)) +
   geom_point(size=0.5, color="red") + 
-  geom_smooth(data=posGenes, aes(count_st, count_bulk), method = "lm", se = FALSE) +
+  geom_smooth(data=posGenes, aes(count_st, count_bulk), method = "lm", se = FALSE, linetype="11", size=0.5) +
   theme_cowplot(8)
 
-p4 = ggplot(posGenes, aes(count_st, count_bulk)) +
+p4 = ggplot(posGenes, aes(log_count_st, log_count_bulk)) +
   geom_point(size=0.5, color="red") + 
-  scale_x_continuous(trans='log10') +
-  scale_y_continuous(trans='log10') + 
-  geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(data=posGenes, method = "lm", se = FALSE, linetype="11", size=0.5) +
   theme_cowplot(8)
 
 plot_grid(p3, p4, labels = c("A","B"), label_size=8)
