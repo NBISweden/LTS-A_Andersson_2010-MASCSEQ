@@ -29,7 +29,9 @@ localrules:
     gffToBed,
     filter_to_CDS,
     collateSummedStAndBulkRnaSeqAbundance,
-    stVsBulkComparison
+    stVsBulkComparison,
+    stVsBulkComparisonTranscriptome,
+    stVsBulkComparisonGenome
     
 def busco_input(samples, config):
     files = []
@@ -490,11 +492,12 @@ rule star_index_transcriptome:
         index = expand("resources/{{reftype, transcriptome.*}}/star/{{ref}}.idx/{f}",
                        f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
                               "chrStart.txt", "Genome", "genomeParameters.txt",
-                              "Log.out", "SA", "SAindex" ])
+                              "SA", "SAindex" ])
     log:
         "resources/logs/{reftype}/star/{ref}_star_index.log"
     params:
         genomedir = "resources/{reftype}/star/",
+        index = "resources/{reftype,genome.*}/star/{ref}.idx",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
@@ -526,7 +529,7 @@ rule star_index_transcriptome:
         ## Start STAR, backticks are used to allow comments in multi-line bash command
         STAR \
         --runMode genomeGenerate \
-        --genomeDir {output.index} \
+        --genomeDir {params.index} \
         --genomeFastaFiles {input.fasta} \
         --runThreadN {threads} \
         `# Options reducing computational load` \
@@ -550,11 +553,12 @@ rule star_index_genome:
         index = expand("resources/{{reftype, genome.*}}/star/{{ref}}.idx/{f}",
                        f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
                               "chrStart.txt", "Genome", "genomeParameters.txt",
-                              "Log.out", "SA", "SAindex" ])
+                              "SA", "SAindex" ])
     log:
         "results/logs/{reftype}/{ref}_star_index.log"
     params:
         genomedir = "results/{reftype}/reference/star/",
+        index = "resources/{reftype,genome.*}/star/{ref}.idx",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
@@ -587,7 +591,7 @@ rule star_index_genome:
         ## Start STAR, backticks are used to allow comments in multi-line bash command
         STAR \
         --runMode genomeGenerate \
-        --genomeDir {output.index} \
+        --genomeDir {params.index} \
         --genomeFastaFiles {input.fasta} \
         --runThreadN {threads} \
         --sjdbGTFfile {input.gff} \
@@ -640,7 +644,7 @@ rule star_map:
         index = expand("resources/{{reftype}}/star/{{ref}}.idx/{f}",
                        f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
                               "chrStart.txt", "Genome", "genomeParameters.txt",
-                              "Log.out", "SA", "SAindex" ])
+                              "SA", "SAindex" ])
     output:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
 #        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
@@ -650,7 +654,8 @@ rule star_map:
     log:
         log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
     params:
-        outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}."
+        outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}.",
+        index = "resources/{reftype,genome.*}/star/{ref}.idx"
     threads: 8
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 360
@@ -661,7 +666,7 @@ rule star_map:
         exec &> {log}
         
         STAR \
-        --genomeDir {input.index} \
+        --genomeDir {params.index} \
         --readFilesIn {input.R1} {input.R2} \
         --outFileNamePrefix {params.outprefix} \
         --outFilterMultimapNmax 1 \
@@ -724,12 +729,12 @@ rule sortBam:
     output file).
     """
     output:
-        bam = temp("results/{prefix}.sortedByName.out.bam")
+        bam = "results/{prefix}.sortedByName.out.bam"
     input:
         bam = "results/{prefix}.sortedByCoord.out.bam"
     conda: "envs/samtools.yml"
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60
+        runtime = lambda wildcards, attempt: attempt ** 2 * 240
     shadow: "shallow"
     log:  "results/{prefix}.sortBam.log"
     shell:
@@ -842,9 +847,9 @@ rule readCountGenome:
         bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
         gtf = "resources/{reftype}/{ref}.gtf"
     output:
-        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.abundance.tsv",
+        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.{feature,genes|transcripts}.abundance.tsv",
     log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.readCountGenome.log"
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{feature,genes|transcripts}.readCountGenome.log"
     params:
         order = "name", 
         strandedness = lambda wc: "yes" if samples[wc.sample]["strandness"] == "sense" \
@@ -852,13 +857,13 @@ rule readCountGenome:
                             else "no", 
         minMapq = 0, 
         feature = "exon",
-        sumOnFeature = "gene_id",
+        sumOnFeature = lambda wc: "gene_id" if wc. feature == "genes" else "transcript_id",
         htseqMode = "intersection-nonempty",
         htseqAmbiguous = "none",
         multiMappers = "ignore"
     threads: 1
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60
+        runtime = lambda wildcards, attempt: attempt ** 2 * 240
     conda:
         "envs/htseq.yml"
     shell:
@@ -924,24 +929,26 @@ rule readCountTranscriptome:
 rule collateSummedStAndBulkRnaSeqAbundance:
     input:
         st = lambda wc: samples[wc.sample]["stResults"],
-        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.transcripts.abundance.tsv"
+        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.{feature}.abundance.tsv"
     output:
         tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature,genes|transcripts}.stAndBulkAbundance.tsv"
     params:
-        doGeneLevel = lambda wc: True if wc.feature == "genes" else False
+        doGeneLevel = lambda wc: True if wc.refType == "transcriptome" and wc.feature == "genes" else False
     log:
         log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature}.stAndBulkAbundance.log"
     script: "src/collateSummedStAndBulkRnaSeqAbundance.py"
 
 
-rule stVsBulkComparison:
+rule stVsBulkComparisonTranscriptome:
     input:
         transcriptsFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.transcripts.stAndBulkAbundance.tsv",
         genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.genes.stAndBulkAbundance.tsv"
     output:
-        html = "reports/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
+        html = "reports/{refType, transcriptome.*}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
     log:
-        log = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60
     conda: "envs/rmarkdown.yml"
     params:
         script = "src/stVsBulkComparison.Rmd",
@@ -953,7 +960,8 @@ rule stVsBulkComparison:
                 refType = wc.refType
             ),
         runDir = prependPwd(""),
-        outDir = "reports/{refType}/star/{ref}/comparisons/"
+        outDir = "reports/{refType}/star/{ref}/comparisons/",
+        doTranscripts = "TRUE"
     shell:
         """
         exec &> {log}
@@ -963,7 +971,49 @@ rule stVsBulkComparison:
             title = '{params.title}',
             runDirectory = '{params.runDir}',
             transcriptsFile = '{input.transcriptsFile}',
-            genesFile = '{input.genesFile}'
+            genesFile = '{input.genesFile}',
+            doTranscripts = "TRUE"
+        )
+        library(rmarkdown)
+        render('{params.script}', output_format='bookdown::html_document2', 
+               output_file='{output.html}', output_dir='{params.outDir}', 
+               params=myparams, intermediates_dir='$SNIC_TMP')
+        "|R --vanilla
+        echo "Done"
+        """
+
+
+rule stVsBulkComparisonGenome:
+    input:
+        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.genes.stAndBulkAbundance.tsv"
+    output:
+        html = "reports/{refType, genome.*}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
+    log:
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+    conda: "envs/rmarkdown.yml"
+    params:
+        script = "src/stVsBulkComparison.Rmd",
+        title = lambda wc: "Report from the read count comparison " \
+            "between stpipeline and bulk RNAseq for sample _{sample}_ {rna} mapped to the _{ref}_ {refType}".format(
+                sample = wc.sample,
+                rna = wc.RNA,
+                ref = wc.ref,
+                refType = wc.refType
+            ),
+        runDir = prependPwd(""),
+        outDir = "reports/{refType}/star/{ref}/comparisons/",
+        doTranscripts = "FALSE"
+    shell:
+        """
+        exec &> {log}
+
+        echo -e "
+        myparams = list(
+            title = '{params.title}',
+            runDirectory = '{params.runDir}',
+            transcriptsFile = 'NA',
+            genesFile = '{input.genesFile}',
+            doTranscripts = "FALSE"
         )
         library(rmarkdown)
         render('{params.script}', output_format='bookdown::html_document2', 
