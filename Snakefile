@@ -1065,21 +1065,21 @@ rule detonate:
 ##################
 
 rule barrnap:
-input:
+    input:
         "results/{assembler}/{sample}/{sample}.filtered.fasta.gz"
     output:
-       gff = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.gff"
-       outseq = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.fasta"
-   log: "results/logs/barrnap/{assembler}.{sample}.barrnap.log"
-   threads: 10
-   resources:
-       runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
-   conda: "envs/barrnap.yml"
-   shell:
-       """
-       exec &> {log}
-       barrnap --kingdom euk --threads {threads} --outseq {output.outseq} {input} > {output.gff}
-       """
+        gff = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.gff",
+        outseq = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.fasta"
+    log: "results/logs/barrnap/{assembler}.{sample}.barrnap.log"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
+    conda: "envs/barrnap.yml"
+    shell:
+        """
+        exec &> {log}
+        barrnap --kingdom euk --threads {threads} --outseq {output.outseq} {input} > {output.gff}
+        """
 
 def genetic_code(wildcards):
     try:
