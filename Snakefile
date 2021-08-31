@@ -381,7 +381,7 @@ rule extractTranscriptsFromGenome:
         fasta = "resources/genome/{ref}.fasta.gz",
         gff = "resources/genome/{ref}.gff"
     output:
-        fasta = "resources/transcriptomeFromGenome/{ref}_transcriptsFromGenome.fasta.gz"
+        fasta = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
     log:
         "resources/logs/transcriptome/{ref}_extractTranscriptsFromGenome.log"
     conda:
@@ -646,16 +646,17 @@ rule star_map:
                               "chrStart.txt", "Genome", "genomeParameters.txt",
                               "SA", "SAindex" ])
     output:
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-#        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
-        logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.final.out",
-        SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.SJ.out.tab",
-#        unmapped = "results/{reftype}/star/{ref}/{sample}.{RNA}.unmapped.fastq"
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByCoord.out.bam",
+        logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA, .*RNA}.{mm}.Log.final.out",
+        SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.SJ.out.tab",
+#        unmapped = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.unmapped.fastq"
+#        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.Log.out",
     log:
-        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
+        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.star_map.log"
     params:
         outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}.",
-        index = "resources/{reftype,genome.*}/star/{ref}.idx"
+        index = "resources/{reftype,genome.*}/star/{ref}.idx",
+        multimap = lambda wc: 1 if wc.mm == "excludeMultiMap" else 20
     threads: 8
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 360
@@ -669,12 +670,13 @@ rule star_map:
         --genomeDir {params.index} \
         --readFilesIn {input.R1} {input.R2} \
         --outFileNamePrefix {params.outprefix} \
-        --outFilterMultimapNmax 1 \
+        --outFilterMultimapNmax {params.multimap} \
         --runThreadN {threads} \
         --outSAMtype BAM SortedByCoordinate \
         --outSAMmultNmax 1 \
         --outMultimapperOrder Random \
         --outFilterMismatchNoverLmax 0.1 \
+        --outSAMprimaryFlag OneBestScore \
         --readFilesType Fastx \
         --outSAMunmapped Within KeepPairs \
         --limitBAMsortRAM 3826372101
@@ -922,31 +924,33 @@ rule readCountTranscriptome:
     script: "src/manualReadCount.py"
 
 
+
+
 #######################################
 # Compare st- and BulkRNAseq-abundance
 #######################################
             
 rule collateSummedStAndBulkRnaSeqAbundance:
     input:
-        st = lambda wc: samples[wc.sample]["stResults"],
-        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.{feature}.abundance.tsv"
+        st = lambda wc: samples[wc.sample]["stResults_"+wc.mm],
+        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.{mm}.{feature}.abundance.tsv"
     output:
-        tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature,genes|transcripts}.stAndBulkAbundance.tsv"
+        tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.{feature,genes|transcripts}.stAndBulkAbundance.tsv"
     params:
         doGeneLevel = lambda wc: True if wc.refType == "transcriptome" and wc.feature == "genes" else False
     log:
-        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature}.stAndBulkAbundance.log"
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.{feature}.stAndBulkAbundance.log"
     script: "src/collateSummedStAndBulkRnaSeqAbundance.py"
 
 
 rule stVsBulkComparisonTranscriptome:
     input:
-        transcriptsFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.transcripts.stAndBulkAbundance.tsv",
-        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.genes.stAndBulkAbundance.tsv"
+        transcriptsFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.transcripts.stAndBulkAbundance.tsv",
+        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.genes.stAndBulkAbundance.tsv"
     output:
-        html = "reports/{refType, transcriptome.*}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
+        html = "reports/{refType, transcriptome.*}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.stAndBulkAbundanceCorrelationReport.html"
     log:
-        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.stVsBulkComparison.log"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60
     conda: "envs/rmarkdown.yml"
@@ -1072,13 +1076,15 @@ rule barrnap:
         outseq = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.fasta"
     log: "results/logs/barrnap/{assembler}.{sample}.barrnap.log"
     threads: 10
+    params:
+        reject = 0.1
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
     conda: "envs/barrnap.yml"
     shell:
         """
         exec &> {log}
-        barrnap --kingdom euk --threads {threads} --outseq {output.outseq} {input} > {output.gff}
+        gunzip -c {input} | barrnap --kingdom euk --threads {threads} --outseq {output.outseq} --reject {params.reject} - > {output.gff}
         """
 
 def genetic_code(wildcards):
