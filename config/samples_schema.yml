@@ -4,6 +4,10 @@ properties:
   sample_id:
     type: string
     description: sample name/identifier
+  readType:
+    type: string
+    description: What kind of sequencing, bulk or st
+    enum: ["bulk", "st"]
   R1:
     type: string
     description: File path for fwd sequence file
@@ -27,6 +31,7 @@ properties:
 
 required:
   - sample_id
+  - readType
   - R1
   - R2
   - reference
