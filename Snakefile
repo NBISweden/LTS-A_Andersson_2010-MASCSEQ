@@ -923,6 +923,55 @@ rule readCountTranscriptome:
 
 
 #######################################
+# Run st-pipeline
+#######################################
+
+rule runStPipeline:
+    input:
+        R1 = "results/intermediate/{sample}_R1.fastq.gz",
+        R2 = "results/intermediate/{sample}_R2.fastq.gz",
+        index = expand("resources/{{reftype}}/star/{{ref}}.idx/{f}",
+                       f = [ "chrLength.txt", "chrNameLength.txt", "chrName.txt",
+                              "chrStart.txt", "Genome", "genomeParameters.txt",
+                              "SA", "SAindex" ]),
+        gtf = "resources/{reftype}/{ref}.gtf"
+    output:
+        stdata = "results/{reftype}/stPipeline/{ref}/{sample}.{mm, includeMultiMap|excludeMultiMap}_stdata.tsv",
+        reads = "results/{reftype}/stPipeLine/{ref}/{sample}.{mm}_reads.bed",
+    log:
+        log = "results/log/{reftype}/star/{ref}/{sample}.{mm}_runStPipeline.log"
+    params:
+        arrayIndex = config["arrayIndex"],
+        starIndex = "resources/{reftype}/star/{ref}.idx",
+        exp = "{sample}.{mm}",
+        outDir = "results/{reftype}/star/{ref}/",
+        disableMultiMap = lambda wc: "--disable-multimap" if wc.mm == "excludeMultiMap" else ""
+    shell:
+       """
+       conda activate /crex/proj/snic2020-6-126/projects/masc_seq/st_pipeline/envs/st_pipeline
+       st_pipeline_run.py \
+       --ids {params.arrayIndex} \
+       --ref-map {params.starIndex} \
+       --expName {params.exp} \
+       --ref-annotation {input.gtf} \
+       --mapping-threads 8 \
+       --umi-start-position 18 \
+       --umi-end-position 25 \
+       --output-folder {params.outDir} \
+       --verbose \
+       --remove-polyA 15 \
+       --remove-polyT 15 \
+       --remove-polyC 15 \
+       --remove-polyG 15 \
+       {params.disableMultiMap} \
+       --compute-saturation \
+       --log-file {log.log} \
+       {input.R1} {input.R2}
+       """
+
+
+
+#######################################
 # Compare st- and BulkRNAseq-abundance
 #######################################
             
