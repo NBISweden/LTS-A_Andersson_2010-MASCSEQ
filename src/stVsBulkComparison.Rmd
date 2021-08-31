@@ -122,7 +122,8 @@ plot_grid(p1,p2, labels = c("A","B"), label_size=8)
 ## Genes
 
 ```{r genes}
-genes = read.delim(params$genesFile)
+origGenes = read.delim(params$genesFile)
+genes=origGenes
 genes[genes$count_st<=0, "count_st"] = -max(genes$count_st)/5 #-10000
 genes[genes$count_bulk<=0, "count_bulk"] = -max(genes$count_bulk)/5 #-10000
 posGenes = genes[genes$count_st > 0 & genes$count_bulk > 0,]
@@ -156,5 +157,89 @@ p4 = ggplot(posGenes, aes(log_count_st, log_count_bulk)) +
   theme_cowplot(8)
 
 plot_grid(p3, p4, labels = c("A","B"), label_size=8)
+
+```
+
+
+```{r simulate, echo=FALSE}
+
+simResults = NULL #data.frame(pearson=list(), spearman=,list(), logPearson=list(), logSpearman=list())
+
+N=100
+
+for(j in seq(1,N)){
+  sim = data.frame(genes = genes$genes, count_bulk=genes$count_bulk)
+  sim$P = cumsum(sim$count_bulk/sum(sim$count_bulk))
+  sim$count_st = 0
+  
+  idx = runif(n=sum(origGenes$count_st))
+  t=table(sapply(idx, function(p){which(sim$P>=p)[1]}))
+  sim[as.integer(names(t)), "count_st"] = t
+  
+  # (for(i in seq(1, sum(genes$count_st))){
+  #   p=runif(1)
+  #   idx = which(sim$P>=p)[1]-1
+  #   sim[idx, "count_st"] = sim[idx, "count_st"]+1
+  # }
+  #   
+  sim = sim[sim$count_st > 0 & sim$count_bulk > 0,]
+  
+  pearsonsim = cor.test(sim$count_st, sim$count_bulk, method = "pearson", alternative = "two.sided")$estimate
+  spearmansim = cor.test(sim$count_st, sim$count_bulk, method = "spearman", alternative = "two.sided")$estimate
+  
+  sim$log_count_st = log2(sim$count_st)
+  sim$log_count_bulk = log2(sim$count_bulk)
+  log_pearsonsim = cor.test(sim$log_count_st, sim$log_count_bulk, method = "pearson", alternative = "two.sided")$estimate
+  log_spearmansim = cor.test(sim$log_count_st, sim$log_count_bulk, method = "spearman", alternative = "two.sided")$estimate
+  
+  simResults =rbind(simResults, data.frame(pearsonsim,
+                                           spearmansim, 
+                                           log_pearsonsim, 
+                                           log_spearmansim))
+}
+
+
+```
+
+
+# Simulation
+
+To investigate if the low read count in the st analysis could affect for the low correlation values, a simulation study was performed as follows.
+
+1. The read count distribution over genes of the bulk RNAseq result, $B$ was used to approximate the cumulative probability distribution of sampling a read from gene. That is, 
+  1. each gene's, $g$,  the read count was divided by the total number of reads and used as the probability of sampling a read, $r$, from that gene, $P[r|g]$.
+  2. the cumulative $P[c|g]$ over genes (in the order they occurred in the result, this is arbitrary and will not affect generality) is the used as a cumulative distribution function $cdf$.
+2. Let $N$ be the total read count of the sr analysis
+3. Sample $N$ gene reads from $P[r|g]$ and for each gene, count the number of reads that has been sampled from it, this will be the simulated gene count, S$.
+4. Perform Pearson and Spearman correlations on log2-transformed counts between $S$ and $B$ and record the correlation coefficients.
+
+This procedure was repeated $`r N`$ times to obtain an approximated distribution of the respective correlation coefficient under the NULL model that the two compared read count samples are drawn from the same underlying distribution (Fig. \@ref(fig:histsim).
+
+
+```{r plotsim, include=FALSE, fig.cap = paste0("Correlation plots for gene-level read count analysis with (A) raw counts and (B) log2-transformed counts; the dotted blue line is the linear model-fitted regression line $count\\_bulk \\sim count\\_st$. Genes with missing data for counts have received a dummy value of -1000 (only shown in panel A).")}
+
+p5 = ggplot(sim, aes(count_st, count_bulk)) +
+  geom_point(size=0.5, color="red") + 
+  geom_smooth(data=sim, aes(count_st, count_bulk), method = "lm", se = FALSE, linetype="11", size=0.5) +
+  theme_cowplot(8)
+
+p6 = ggplot(sim, aes(log_count_st, log_count_bulk)) +
+  geom_point(size=0.5, color="red") + 
+  geom_smooth(data=sim, method = "lm", se = FALSE, linetype="11", size=0.5) +
+  theme_cowplot(8)
+
+plot_grid(p5, p6, labels = c("A","B"), label_size=8)
+
+```
+```{r histsim, fig.cap = paste0("Histograms of simulated correlations of log2-transformed  gene-level read count analysis for (A) Pearson and (B) Spearman correlation values. The blue line indicate the observed correlation coefficient in the experimental data.")}
+
+p5 = ggplot(simResults, aes(x=log_pearsonsim)) +
+  geom_histogram() + 
+  geom_vline(xintercept = log_pearsonGenes$estimate, color="blue")
+p6 = ggplot(simResults, aes(x=log_spearmansim)) +
+  geom_histogram() + 
+  geom_vline(xintercept = log_spearmanGenes$estimate, color="blue")
+
+plot_grid(p5, p6, labels = c("A","B"), label_size=8)
 
 ```
