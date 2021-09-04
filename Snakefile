@@ -504,6 +504,7 @@ rule star_index_transcriptome:
         fasta = "$TMPDIR/{reftype}.{ref}.fasta",
         index = "resources/{reftype,genome.*}/star/{ref}.idx",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
+    threads: 10
     conda:
         "envs/star.yml"
     resources:
