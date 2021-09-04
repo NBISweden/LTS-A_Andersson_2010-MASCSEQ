@@ -386,6 +386,8 @@ rule extractTranscriptsFromGenome:
         "resources/logs/transcriptome/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
+    params:
+        fasta = "resources/transcriptomeFromGenome/{ref}_transcriptsFromGenome.fasta"
     threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
@@ -394,7 +396,7 @@ rule extractTranscriptsFromGenome:
         exec &> {log}        
 
         gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
-        # Additional mRNA-specific options -C -V -M 
+        # Additional mRNA-specific options -C -V -M
 
         echo "Done!"
         """
@@ -538,7 +540,20 @@ rule star_index_transcriptome:
 
          echo "Done!"
         """
-         
+
+rule concatenate_fasta:
+    """
+    Concatenates fasta files for use with STAR indexing
+    """
+    input:
+        config["concatenate"]
+    output:
+        "resources/transcriptome/concat.fasta.gz"
+    shell:
+        """
+        cat {input} > {output}
+        """
+
 rule star_index_genome:
     """
     Creates a STAR index file from a gzipped fasta file with reference
