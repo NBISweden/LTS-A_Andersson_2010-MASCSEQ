@@ -553,7 +553,12 @@ rule concatenate_fasta:
         "resources/transcriptome/concat.fasta.gz"
     shell:
         """
-        cat {input} > {output}
+        for f in {input};
+        do
+            n=$(basename $f)
+            code=${n:0:3}
+            gunzip -c $f | sed 's/>/>$code|/g' | gzip -c >> {output}
+        done
         """
 
 rule star_index_genome:
@@ -580,7 +585,7 @@ rule star_index_genome:
     conda:
         "envs/star.yml"
     resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60 
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
     threads: 1
     shell:
         """
