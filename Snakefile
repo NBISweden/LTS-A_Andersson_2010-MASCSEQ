@@ -386,6 +386,8 @@ rule extractTranscriptsFromGenome:
         "resources/logs/transcriptome/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
+    params:
+        fasta = "resources/transcriptomeFromGenome/{ref}_transcriptsFromGenome.fasta"
     threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
@@ -394,8 +396,10 @@ rule extractTranscriptsFromGenome:
         exec &> {log}        
 
         gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
-        # Additional mRNA-specific options -C -V -M 
+        # Additional mRNA-specific options -C -V -M
 
+        gzip {params.fasta}
+        
         echo "Done!"
         """
 
@@ -497,8 +501,10 @@ rule star_index_transcriptome:
         "resources/logs/{reftype}/star/{ref}_star_index.log"
     params:
         genomedir = "resources/{reftype}/star/",
+        fasta = "$TMPDIR/{reftype}.{ref}.fasta",
         index = "resources/{reftype,genome.*}/star/{ref}.idx",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
+    threads: 10
     conda:
         "envs/star.yml"
     resources:
@@ -506,16 +512,19 @@ rule star_index_transcriptome:
     shell:
         """
         exec &> {log}
-
+        
+        # unzip fasta file
+        gunzip -c {input.fasta} > {params.fasta}
+        
         ## get some parameter values from params and input files and use these to set
         ## recommended optionparameter values for STAR options
         sjdbOverhang=100 # avoid error unbound var; actually set below
         let sjdbOverhang={params.readlength}-1
 
-        genomelength=$( cat {input.fasta} | \
+        genomelength=$( gunzip -c {input.fasta} | \
            awk 'BEGIN{{ret=0}} !/>/ {{ret=ret+length($0)}} END{{print ret}}' )
 
-        nseqs=$(cat {input.fasta} | grep -c ">")
+        nseqs=$(gunzip -c {input.fasta} | grep -c ">")
 
         # This should be min( 14, log2[ $genomelength ] / 2 - 1 )
         genomeSAindexNbases=$( echo $genomelength| \
@@ -530,7 +539,7 @@ rule star_index_transcriptome:
         STAR \
         --runMode genomeGenerate \
         --genomeDir {params.index} \
-        --genomeFastaFiles {input.fasta} \
+        --genomeFastaFiles {params.fasta} \
         --runThreadN {threads} \
         `# Options reducing computational load` \
         --genomeSAindexNbases $genomeSAindexNbases        `# Very small genomes` \
@@ -538,7 +547,25 @@ rule star_index_transcriptome:
 
          echo "Done!"
         """
-         
+
+rule concatenate_fasta:
+    """
+    Concatenates fasta files for use with STAR indexing
+    """
+    input:
+        config["concatenate"]
+    output:
+        "resources/transcriptome/concat.fasta.gz"
+    shell:
+        """
+        for f in {input};
+        do
+            n=$(basename $f)
+            code=${{n:0:3}}
+            gunzip -c $f | sed "s/>/>$code|/g" | gzip -c >> {output}
+        done
+        """
+
 rule star_index_genome:
     """
     Creates a STAR index file from a gzipped fasta file with reference
@@ -563,7 +590,7 @@ rule star_index_genome:
     conda:
         "envs/star.yml"
     resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60 
+        runtime=lambda wildcards, attempt: attempt ** 2 * 60
     threads: 1
     shell:
         """
