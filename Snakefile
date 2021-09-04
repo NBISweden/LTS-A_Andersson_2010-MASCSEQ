@@ -398,6 +398,8 @@ rule extractTranscriptsFromGenome:
         gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
         # Additional mRNA-specific options -C -V -M
 
+        gzip {params.fasta}
+        
         echo "Done!"
         """
 
