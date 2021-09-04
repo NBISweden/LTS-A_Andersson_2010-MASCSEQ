@@ -557,7 +557,7 @@ rule concatenate_fasta:
         do
             n=$(basename $f)
             code=${{n:0:3}}
-            gunzip -c $f | sed 's/>/>$code|/g' | gzip -c >> {output}
+            gunzip -c $f | sed "s/>/>$code|/g" | gzip -c >> {output}
         done
         """
 
