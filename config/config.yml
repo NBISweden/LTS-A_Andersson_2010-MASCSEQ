@@ -47,3 +47,7 @@ busco:
       url: "https://busco-data.ezlab.org/v4/data/lineages/alveolata_odb10.2020-09-10.tar.gz"
     stramenopiles_odb10:
       url: "https://busco-data.ezlab.org/v4/data/lineages/stramenopiles_odb10.2020-08-05.tar.gz"
+concatenate:
+  - "resources/transcriptomeFromGenome/Tetrahymena.fasta.gz"
+  - "resources/transcriptomeFromGenome/Phaeodactylum.fasta.gz"
+  - "resources/transcriptome/Heterocapsa.fasta.gz"
