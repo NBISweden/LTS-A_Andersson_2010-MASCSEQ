@@ -378,25 +378,68 @@ rule linkReferenceTranscriptome:
         
 rule extractTranscriptsFromGenome:
     input:
-        fasta = "resources/genome/{ref}.fasta.gz",
+        fasta = "resources/genome/{ref}.fasta",
         gff = "resources/genome/{ref}.gff"
     output:
-        fasta = "resources/transcriptomeFromGenome/{ref}_transcriptsFromGenome.fasta.gz"
+        fasta = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
     log:
-        "resources/logs/transcriptome/{ref}_extractTranscriptsFromGenome.log"
+        "resources/logs/transcriptomeFromGenome/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
     threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
+    params:
+        fasta = "resources/transcriptomeFromGenome/{ref}.fasta"
     shell:
         """
         exec &> {log}        
 
-        gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
-        # Additional mRNA-specific options -C -V -M 
+        gffread {input.gff} -g {input.fasta} -w {params.fasta} -E -C
 
+        gzip {params.fasta}
+        
         echo "Done!"
+
+        ### Used gffread options
+        # -g   full path to a multi-fasta file with the genomic sequences for 
+        #      all input mappings, OR a directory with single-fasta files (one 
+        #      per genomic sequence, with file names matching sequence names) 
+        # -w   write a fasta file with spliced exons for each transcript
+        # -E   expose (warn about) duplicate transcript IDs and other potential 
+        #      problems with the given GFF/GTF records
+        # -C   coding only: discard transcripts that do not have CDS features
+
+        # Additional, _not_ used gffread options 
+        # -O   process other non-transcript GFF records (by default 
+        #      non-transcript records are ignored)
+        # -i <maxintron>    discard transcripts having an intron larger than <maxintron>
+        # -l <minlen>.      discard transcripts shorter than <minlen> bases
+        # -V    discard any coding transcripts having in-frame stop codons (requires -g)
+        # -N    discard multi-exon mRNAs that have any intron with a non-canonical
+        #       splice site consensus (i.e. not GT-AG, GC-AG or AT-AC)
+        # -J    discard any transcripts that either lack initial START codon or the 
+        #       terminal STOP codon, or have an in-frame stop codon (i.e. only print 
+        #       mRNAs with a complete, valid CDS)
+        # --no-pseudo    discard genes and their transcripts having features or attributes 
+        #                indicating a 'pseudogene'
+        # -M/--merge     cluster the input transcripts into loci, discarding 
+        #                "duplicated" transcripts (those with the same exact 
+        #                introns and fully contained or equal boundaries)
+        # -K    for -M option: also discard as redundant the shorter, fully contained 
+        #       transcripts (intron chains matching a part of the container)
+        # -Q    for -M option, no longer require boundary containment when 
+        #       assessing redundancy (can be combined with -K); only introns have 
+        #       to match for multi-exon transcripts, and >=80% overlap for single- 
+        #       exon transcripts
+        # --keep-genes    in transcript-only mode (default), also preserve gene records
+        # -x    write a FASTA file with spliced CDS for each GFF transcript
+        
+        # Comments: 
+        # -V, -N, -J not used because this might lead to error for reference genomes
+        # using non-standard genetic code
+        # -M (and associated options) could perhaps be used, but not prioritized
+        # --keep-genes uncertain if this is useful
         """
 
 # Mapping with kallisto
