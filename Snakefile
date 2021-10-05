@@ -378,7 +378,7 @@ rule linkReferenceTranscriptome:
         
 rule extractTranscriptsFromGenome:
     input:
-        fasta = "resources/genome/{ref}.fasta",
+        fasta = "resources/genome/{ref}.fasta.gz",
         gff = "resources/genome/{ref}.gff"
     output:
         fasta = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
@@ -529,7 +529,7 @@ rule star_index_transcriptome:
     STAR options are (at least partly) selected to align with those in ST-pipeline.
     """
     input:
-        fasta = "resources/{reftype}/{ref}.fasta.gz"
+        fasta = "resources/{reftype}/{ref}.fasta"
     output:
         # index = directory("resources/{reftype,transcriptome.*}/star/{ref}.idx")
         index = expand("resources/{{reftype, transcriptome.*}}/star/{{ref}}.idx/{f}",
