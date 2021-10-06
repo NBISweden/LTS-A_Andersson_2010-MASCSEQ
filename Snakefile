@@ -398,6 +398,15 @@ rule extractTranscriptsFromGenome:
         echo "Done!"
         """
 
+# BARRNAP
+rule barrnap_transcriptome:
+    """
+    Run barrnap on transcriptome reference
+    """
+    input:
+        "resources/transcriptomeFromGenome/{ref}.fasta.gz"
+
+
 # Mapping with kallisto
 #   - works only with transcriptome reference files
 #   - handles multimappers very well
