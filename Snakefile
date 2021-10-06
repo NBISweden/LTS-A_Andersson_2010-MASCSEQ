@@ -29,7 +29,6 @@ localrules:
     gffToBed,
     filter_to_CDS,
     collateSummedStAndBulkRnaSeqAbundance,
-    stVsBulkComparison,
     stVsBulkComparisonTranscriptome,
     stVsBulkComparisonGenome
     
