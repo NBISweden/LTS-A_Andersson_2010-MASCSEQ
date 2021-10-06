@@ -170,7 +170,7 @@ rule sortmerna:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
@@ -250,7 +250,7 @@ rule transabyss:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         transabyss --pe {params.R1} {params.R2} -k {wildcards.k} \
@@ -281,7 +281,7 @@ rule transabyss_merge:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         transabyss-merge {params.i} --mink {params.mink} --maxk {params.maxk} \
             --out {params.tmpout} --threads {threads} --prefix {params.prefix} > {log} 2>&1
         gzip {params.tmpout}
@@ -320,7 +320,7 @@ rule trinity:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
@@ -1111,7 +1111,7 @@ rule transdecoder_longorfs:
     shell:
         """
         exec &> {log}
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         gunzip -c {input[0]} > {params.fa}
         TransDecoder.LongOrfs -G {params.gencode} -O {params.outdir} -t {params.fa}
@@ -1140,7 +1140,7 @@ rule transdecoder_predict:
     shell:
         """
         exec &> {log}
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         ln -s {params.fa} {params.ln}
         TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
@@ -1158,7 +1158,7 @@ rule filter_to_CDS:
         ids = "$TMPDIR/{sample}.ids"
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         cat {input.gff} | awk '{{if ($3=="CDS") print $1}}' | uniq > {params.ids}
         seqtk subseq {input.fa} {params.ids} | gzip -c > {output}
         """
@@ -1177,7 +1177,7 @@ rule busco_dl:
     log: "results/logs/busco/{lineage}.download.log"
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.outdir}
         curl -L -o {params.tmpfile} {params.url} > {log} 2>&1
         tar -C {params.outdir} -xf {params.tmpfile}
@@ -1207,7 +1207,7 @@ rule run_busco:
     shell:
         """
         exec &> {log}
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         busco -f --offline --download_path {params.dlpath} -l {wildcards.lineage} \
             -i {input.fa} -m proteins --out_path {params.tmpdir} \
