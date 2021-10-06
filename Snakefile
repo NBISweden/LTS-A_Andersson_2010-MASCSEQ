@@ -504,6 +504,7 @@ rule star_index_transcriptome:
     log:
         "resources/logs/{reftype}/star/{ref}_star_index.log"
     params:
+        tmpfasta = "resources/{reftype}/__temp__{ref}.fasta.gz",
         genomedir = "resources/{reftype}/star/",
         index = "resources/{reftype,genome.*}/star/{ref}.idx",
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
@@ -533,18 +534,22 @@ rule star_index_transcriptome:
         genomeChrBinNbits=$( echo $genomelength $nseqs {params.readlength} | awk \
                              '{{ s = $1 / $2; if(s < $3){{ s = $3 }}; s = log(s) / log(2); \
                               if(s > 18){{ s = 18 }};print s }}' )
+        
+        ### gunzip {input.fasta}
+        zcat {input.fasta} > {params.tmpfasta}
 
         ## Start STAR, backticks are used to allow comments in multi-line bash command
         STAR \
         --runMode genomeGenerate \
         --genomeDir {params.index} \
-        --genomeFastaFiles {input.fasta} \
+        --genomeFastaFiles {params.tmpfasta} \
         --runThreadN {threads} \
         `# Options reducing computational load` \
         --genomeSAindexNbases $genomeSAindexNbases        `# Very small genomes` \
         --genomeChrBinNbits  $genomeChrBinNbits            `# Very many individual sequences (e.g.,transcriptome)`
-
-         echo "Done!"
+        
+        #rm -f {params.tmpfasta}
+        echo "Done!"
         """
          
 rule star_index_genome:
