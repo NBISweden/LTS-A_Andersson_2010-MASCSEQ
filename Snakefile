@@ -393,8 +393,7 @@ rule extractTranscriptsFromGenome:
         """
         exec &> {log}        
 
-        gffread {input.gff} -g {input.fasta} -w {output.fasta} -E -O
-        # Additional mRNA-specific options -C -V -M 
+        gffread {input.gff} -g {input.fasta} -w {params.fasta} -E -C
 
         echo "Done!"
         """

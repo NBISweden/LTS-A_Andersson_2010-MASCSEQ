@@ -34,5 +34,3 @@ required:
   - R2
   - reference
   - type
-  - stResults_includeMultiMap
-  - stResults_excludeMultiMap
