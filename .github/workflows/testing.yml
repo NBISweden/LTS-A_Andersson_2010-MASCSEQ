@@ -33,10 +33,10 @@ jobs:
           snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/multiqc/multiqc.html
       - name: Assembly
         run: |
-          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta
+          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta.gz
       - name: Busco
         run: |
           snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ busco
       - name: Transdecoder
         run: |
-          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta
+          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta.gz
