@@ -32,6 +32,9 @@ genome:
   Phaeodactylum:
     fasta: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.dna.toplevel.fa"
     gff: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Phaeodactylum_tricornutum/Phaeodactylum_tricornutum.ASM15095v2.48.chr.gff3"
+  Tetrahymena:
+    fasta: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Tetrahymena_thermophila/Tetra_Genome-assembly.fasta"
+    gff: "/crex/proj/snic2020-6-126/projects/masc_seq/reference_genomes/Tetrahymena_thermophila/T.thermophila_genome.gff3"
 transcriptome:
   Phaeodactylum:
     fasta: "results/genome/reference/Phaeodactylum_extractTranscriptsFromGenome.fasta.gz"
