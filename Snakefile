@@ -405,6 +405,21 @@ rule barrnap_transcriptome:
     """
     input:
         "resources/transcriptomeFromGenome/{ref}.fasta.gz"
+    output:
+        gff = "resources/transcriptomeFromGenome/{ref}.barrnap.gff",
+        outseq = "resources/transcriptomeFromGenome/{ref}.barrnap.fasta"
+    log: "resources/logs/transcriptome/{ref}.barrnap.log"
+    params:
+        reject = 0.1
+    conda: "envs/barrnap.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 4
+    shell:
+        """
+        exec &> {log}
+        gunzip -c {input} | barrnap --kingdom euk --threads {threads} --outseq {output.outseq} --reject {params.reject} - > {output.gff}
+        """
 
 
 # Mapping with kallisto
