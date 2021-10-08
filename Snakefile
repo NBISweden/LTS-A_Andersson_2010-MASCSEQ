@@ -324,7 +324,7 @@ rule trinity:
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G 
         rm {params.R1} {params.R2}
         gzip {params.tmpdir}/Trinity.fasta
         mv {params.tmpdir}/* {params.outdir}/
