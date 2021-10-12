@@ -9,7 +9,7 @@ def main(sm):
         for record in SeqIO.parse(gz.open(sm.input.ref, 'rt'), "fasta"):
             if record.id in rRNA:
                 continue
-            fhout.write(f">{record.description}\n{record.seq}\n)
+            fhout.write(f">{record.description}\n{record.seq}\n")
 
 
 
