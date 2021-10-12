@@ -420,6 +420,17 @@ rule barrnap_transcriptome:
         gunzip -c {input} | barrnap --kingdom euk --threads {threads} --outseq {output.outseq} --reject {params.reject} - > {output.gff}
         """
 
+rule filter_barrnap_transcripts:
+    input:
+        barrnap = "resources/transcriptomeFromGenome/{ref}.barrnap.fasta",
+        ref = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
+    output:
+        "resources/transcriptomeFromGenome/{ref}.barrnap_filtered.fasta.gz"
+    conda: "envs/biopython.yml"
+    script:
+        "src/filter_barrnap_transcripts.py"
+
+
 
 # Mapping with kallisto
 #   - works only with transcriptome reference files
