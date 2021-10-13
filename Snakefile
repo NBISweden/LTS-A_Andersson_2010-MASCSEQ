@@ -548,6 +548,7 @@ rule star_index_transcriptome:
         readlength = 100 # not solved yet: int(samples["\{sample\}"]["read_length"]) # read length
     conda:
         "envs/star.yml"
+    threads: 20
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60 
     shell:
