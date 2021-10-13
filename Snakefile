@@ -29,7 +29,6 @@ localrules:
     gffToBed,
     filter_to_CDS,
     collateSummedStAndBulkRnaSeqAbundance,
-    stVsBulkComparison,
     stVsBulkComparisonTranscriptome,
     stVsBulkComparisonGenome
     
@@ -170,7 +169,7 @@ rule sortmerna:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
@@ -250,7 +249,7 @@ rule transabyss:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         transabyss --pe {params.R1} {params.R2} -k {wildcards.k} \
@@ -281,7 +280,7 @@ rule transabyss_merge:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 150
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         transabyss-merge {params.i} --mink {params.mink} --maxk {params.maxk} \
             --out {params.tmpout} --threads {threads} --prefix {params.prefix} > {log} 2>&1
         gzip {params.tmpout}
@@ -320,12 +319,12 @@ rule trinity:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         gunzip -c {input.R1} > {params.R1}
         gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G > {log} 2>&1
+        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G 
         rm {params.R1} {params.R2}
         gzip {params.tmpdir}/Trinity.fasta
         mv {params.tmpdir}/* {params.outdir}/
@@ -383,63 +382,65 @@ rule extractTranscriptsFromGenome:
     output:
         fasta = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
     log:
-        "resources/logs/transcriptomeFromGenome/{ref}_extractTranscriptsFromGenome.log"
+        "resources/logs/transcriptome/{ref}_extractTranscriptsFromGenome.log"
     conda:
         "envs/gffread.yaml"
     threads: 1
     resources:
         runtime=lambda wildcards, attempt: attempt ** 2 * 60
-    params:
-        fasta = "resources/transcriptomeFromGenome/{ref}.fasta"
     shell:
         """
         exec &> {log}        
 
         gffread {input.gff} -g {input.fasta} -w {params.fasta} -E -C
 
-        gzip {params.fasta}
-        
         echo "Done!"
+        """
 
-        ### Used gffread options
-        # -g   full path to a multi-fasta file with the genomic sequences for 
-        #      all input mappings, OR a directory with single-fasta files (one 
-        #      per genomic sequence, with file names matching sequence names) 
-        # -w   write a fasta file with spliced exons for each transcript
-        # -E   expose (warn about) duplicate transcript IDs and other potential 
-        #      problems with the given GFF/GTF records
-        # -C   coding only: discard transcripts that do not have CDS features
+# BARRNAP
+rule barrnap_transcriptome:
+    """
+    Run barrnap on transcriptome reference
+    """
+    input:
+        "resources/transcriptomeFromGenome/{ref}.fasta.gz"
+    output:
+        gff = "resources/transcriptomeFromGenome/{ref}.barrnap.gff",
+        outseq = "resources/transcriptomeFromGenome/{ref}.barrnap.fasta"
+    log: "resources/logs/transcriptome/{ref}.barrnap.log"
+    params:
+        reject = 0.1
+    conda: "envs/barrnap.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 4
+    shell:
+        """
+        exec &> {log}
+        gunzip -c {input} | barrnap --kingdom euk --threads {threads} --outseq {output.outseq} --reject {params.reject} - > {output.gff}
+        """
 
-        # Additional, _not_ used gffread options 
-        # -O   process other non-transcript GFF records (by default 
-        #      non-transcript records are ignored)
-        # -i <maxintron>    discard transcripts having an intron larger than <maxintron>
-        # -l <minlen>.      discard transcripts shorter than <minlen> bases
-        # -V    discard any coding transcripts having in-frame stop codons (requires -g)
-        # -N    discard multi-exon mRNAs that have any intron with a non-canonical
-        #       splice site consensus (i.e. not GT-AG, GC-AG or AT-AC)
-        # -J    discard any transcripts that either lack initial START codon or the 
-        #       terminal STOP codon, or have an in-frame stop codon (i.e. only print 
-        #       mRNAs with a complete, valid CDS)
-        # --no-pseudo    discard genes and their transcripts having features or attributes 
-        #                indicating a 'pseudogene'
-        # -M/--merge     cluster the input transcripts into loci, discarding 
-        #                "duplicated" transcripts (those with the same exact 
-        #                introns and fully contained or equal boundaries)
-        # -K    for -M option: also discard as redundant the shorter, fully contained 
-        #       transcripts (intron chains matching a part of the container)
-        # -Q    for -M option, no longer require boundary containment when 
-        #       assessing redundancy (can be combined with -K); only introns have 
-        #       to match for multi-exon transcripts, and >=80% overlap for single- 
-        #       exon transcripts
-        # --keep-genes    in transcript-only mode (default), also preserve gene records
-        # -x    write a FASTA file with spliced CDS for each GFF transcript
-        
-        # Comments: 
-        # -V, -N, -J not used because this might lead to error for reference genomes
-        # using non-standard genetic code
-        # -M (and associated options) could perhaps be used, but not prioritized
-        # --keep-genes uncertain if this is useful
+rule filter_barrnap_transcripts:
+    input:
+        barrnap = "resources/transcriptomeFromGenome/{ref}.barrnap.fasta",
+        ref = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
+    output:
+        "resources/transcriptomeFromGenome/{ref}.barrnap_filtered.fasta.gz"
+    conda: "envs/biopython.yml"
+    script:
+        "src/filter_barrnap_transcripts.py"
+
+rule concat_fasta:
+    """
+    Concatenates fasta files for use with STAR indexing
+    """
+    input:
+        config["concatenate"]
+    output:
+        "resources/transcriptome/concat.fasta.gz"
+    shell:
+        """
+        cat {input} > {output}
         """
 
 # Mapping with kallisto
@@ -694,16 +695,17 @@ rule star_map:
                               "chrStart.txt", "Genome", "genomeParameters.txt",
                               "SA", "SAindex" ])
     output:
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByCoord.out.bam",
-#        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.out",
-        logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA}.Log.final.out",
-        SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.SJ.out.tab",
-#        unmapped = "results/{reftype}/star/{ref}/{sample}.{RNA}.unmapped.fastq"
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByCoord.out.bam",
+        logfinal = "results/{reftype}/star/{ref}/{sample}.{RNA, .*RNA}.{mm}.Log.final.out",
+        SJ = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.SJ.out.tab",
+#        unmapped = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.unmapped.fastq"
+#        logout = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.Log.out",
     log:
-        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.star_map.log"
+        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.star_map.log"
     params:
         outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}.",
-        index = "resources/{reftype,genome.*}/star/{ref}.idx"
+        index = "resources/{reftype,genome.*}/star/{ref}.idx",
+        multimap = lambda wc: 1 if wc.mm == "excludeMultiMap" else 20
     threads: 8
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 360
@@ -717,12 +719,13 @@ rule star_map:
         --genomeDir {params.index} \
         --readFilesIn {input.R1} {input.R2} \
         --outFileNamePrefix {params.outprefix} \
-        --outFilterMultimapNmax 1 \
+        --outFilterMultimapNmax {params.multimap} \
         --runThreadN {threads} \
         --outSAMtype BAM SortedByCoordinate \
         --outSAMmultNmax 1 \
         --outMultimapperOrder Random \
         --outFilterMismatchNoverLmax 0.1 \
+        --outSAMprimaryFlag OneBestScore \
         --readFilesType Fastx \
         --outSAMunmapped Within KeepPairs \
         --limitBAMsortRAM 3826372101
@@ -970,31 +973,33 @@ rule readCountTranscriptome:
     script: "src/manualReadCount.py"
 
 
+
+
 #######################################
 # Compare st- and BulkRNAseq-abundance
 #######################################
             
 rule collateSummedStAndBulkRnaSeqAbundance:
     input:
-        st = lambda wc: samples[wc.sample]["stResults"],
-        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.{feature}.abundance.tsv"
+        st = lambda wc: samples[wc.sample]["stResults_"+wc.mm],
+        bulk = "results/{refType}/star/{ref}/{sample}.{RNA}.{mm}.{feature}.abundance.tsv"
     output:
-        tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature,genes|transcripts}.stAndBulkAbundance.tsv"
+        tsv = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.{feature,genes|transcripts}.stAndBulkAbundance.tsv"
     params:
         doGeneLevel = lambda wc: True if wc.refType == "transcriptome" and wc.feature == "genes" else False
     log:
-        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{feature}.stAndBulkAbundance.log"
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.{feature}.stAndBulkAbundance.log"
     script: "src/collateSummedStAndBulkRnaSeqAbundance.py"
 
 
 rule stVsBulkComparisonTranscriptome:
     input:
-        transcriptsFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.transcripts.stAndBulkAbundance.tsv",
-        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.genes.stAndBulkAbundance.tsv"
+        transcriptsFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.transcripts.stAndBulkAbundance.tsv",
+        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.genes.stAndBulkAbundance.tsv"
     output:
-        html = "reports/{refType, transcriptome.*}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
+        html = "reports/{refType, transcriptome.*}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.stAndBulkAbundanceCorrelationReport.html"
     log:
-        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.stVsBulkComparison.log"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60
     conda: "envs/rmarkdown.yml"
@@ -1112,6 +1117,25 @@ rule detonate:
 ### ANNOTATION ###
 ##################
 
+rule barrnap:
+    input:
+        "results/{assembler}/{sample}/{sample}.filtered.fasta.gz"
+    output:
+        gff = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.gff",
+        outseq = "results/barrnap/{assembler}/{sample}/{sample}.barrnap.fasta"
+    log: "results/logs/barrnap/{assembler}.{sample}.barrnap.log"
+    threads: 10
+    params:
+        reject = 0.1
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
+    conda: "envs/barrnap.yml"
+    shell:
+        """
+        exec &> {log}
+        gunzip -c {input} | barrnap --kingdom euk --threads {threads} --outseq {output.outseq} --reject {params.reject} - > {output.gff}
+        """
+
 def genetic_code(wildcards):
     try:
         return config["transdecode"]["genetic_codes"][wildcards.sample]
@@ -1137,7 +1161,7 @@ rule transdecoder_longorfs:
     shell:
         """
         exec &> {log}
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         gunzip -c {input[0]} > {params.fa}
         TransDecoder.LongOrfs -G {params.gencode} -O {params.outdir} -t {params.fa}
@@ -1166,7 +1190,7 @@ rule transdecoder_predict:
     shell:
         """
         exec &> {log}
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         ln -s {params.fa} {params.ln}
         TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
@@ -1184,7 +1208,7 @@ rule filter_to_CDS:
         ids = "$TMPDIR/{sample}.ids"
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         cat {input.gff} | awk '{{if ($3=="CDS") print $1}}' | uniq > {params.ids}
         seqtk subseq {input.fa} {params.ids} | gzip -c > {output}
         """
@@ -1203,7 +1227,7 @@ rule busco_dl:
     log: "results/logs/busco/{lineage}.download.log"
     shell:
         """
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.outdir}
         curl -L -o {params.tmpfile} {params.url} > {log} 2>&1
         tar -C {params.outdir} -xf {params.tmpfile}
@@ -1233,7 +1257,7 @@ rule run_busco:
     shell:
         """
         exec &> {log}
-        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=/scratch; fi
+        if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         busco -f --offline --download_path {params.dlpath} -l {wildcards.lineage} \
             -i {input.fa} -m proteins --out_path {params.tmpdir} \

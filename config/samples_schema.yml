@@ -21,9 +21,12 @@ properties:
     type: string
     enum: ["genome", "transcriptome"]
     description: Type of analysis
-  stResults:
+  stResults_includeMultiMap:
     type: string
-    description: Path to xxx_stdata.tsv output file from st pipeline
+    description: Path to xxx_stdata.tsv output file from st pipeline with multimappers
+  stResults_excludeMultiMap:
+    type: string
+    description: Path to xxx_stdata.tsv output file from st pipeline with disabled multimappers
 
 required:
   - sample_id
@@ -31,4 +34,3 @@ required:
   - R2
   - reference
   - type
-  - stResults
