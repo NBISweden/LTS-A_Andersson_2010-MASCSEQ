@@ -30,7 +30,9 @@ localrules:
     filter_to_CDS,
     collateSummedStAndBulkRnaSeqAbundance,
     stVsBulkComparisonTranscriptome,
-    stVsBulkComparisonGenome
+    stVsBulkComparisonGenome,
+    filter_barrnap_transcripts,
+    concat_fasta
     
 def busco_input(samples, config):
     files = []
