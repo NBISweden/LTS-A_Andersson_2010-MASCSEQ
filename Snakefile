@@ -424,7 +424,7 @@ rule barrnap_transcriptome:
 
 rule filter_barrnap_transcripts:
     input:
-        barrnap = "resources/transcriptomeFromGenome/{ref}.barrnap.fasta",
+        barrnap = "resources/transcriptomeFromGenome/{ref}.barrnap.gff",
         ref = "resources/transcriptomeFromGenome/{ref}.fasta.gz"
     output:
         "resources/transcriptomeFromGenome/{ref}.barrnap_filtered.fasta.gz"
