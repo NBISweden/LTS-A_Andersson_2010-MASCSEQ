@@ -51,6 +51,6 @@ busco:
     stramenopiles_odb10:
       url: "https://busco-data.ezlab.org/v4/data/lineages/stramenopiles_odb10.2020-08-05.tar.gz"
 concatenate:
-  - "resources/transcriptomeFromGenome/Tetrahymena.fasta.gz"
-  - "resources/transcriptomeFromGenome/Phaeodactylum.fasta.gz"
+  - "resources/transcriptomeFromGenome/Tetrahymena.barrnap_filtered.fasta.gz"
+  - "resources/transcriptomeFromGenome/Phaeodactylum.barrnap_filtered.fasta.gz"
   - "resources/transcriptome/Heterocapsa.fasta.gz"

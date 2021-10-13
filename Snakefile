@@ -430,7 +430,18 @@ rule filter_barrnap_transcripts:
     script:
         "src/filter_barrnap_transcripts.py"
 
-
+rule concat_fasta:
+    """
+    Concatenates fasta files for use with STAR indexing
+    """
+    input:
+        config["concatenate"]
+    output:
+        "resources/transcriptome/concat.fasta.gz"
+    shell:
+        """
+        cat {input} > {output}
+        """
 
 # Mapping with kallisto
 #   - works only with transcriptome reference files
