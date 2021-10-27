@@ -18,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          lfs: true
+      - name: Checkout LFS files
+        run: git lfs pull
       - uses: s-weigand/setup-conda@v1
       - name: Install the conda environment
         run: |
@@ -30,13 +34,4 @@ jobs:
           snakemake --configfile tests/config.yml --directory tests/ -n
       - name: Preprocess
         run: |
-          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/multiqc/multiqc.html
-      - name: Assembly
-        run: |
-          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta
-      - name: Busco
-        run: |
-          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ busco
-      - name: Transdecoder
-        run: |
-          snakemake --use-conda -rpk -j 4 --configfile tests/config.yml --directory tests/ results/trinity/P18363_103/P18363_103.filtered.fasta
+          snakemake --use-conda --conda-frontend mamba -rpk -j 4 --configfile tests/config.yml --directory tests/ results/multiqc/multiqc.html

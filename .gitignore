@@ -8,7 +8,7 @@
 *-env/
 
 # Partially ignored directories
-**/data/*
+#**/data/*
 **/results/*
 
 reports/*
@@ -19,7 +19,7 @@ reports/knitr-pdf/*
 # Exceptions
 !*/README.md
 !*/*/README.md
-
+!tests/data/
 !data/test_data/
 !data/data_management/
 
