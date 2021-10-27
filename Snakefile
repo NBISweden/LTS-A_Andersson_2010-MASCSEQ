@@ -301,8 +301,10 @@ def trinity_strand_string(wildcards):
 
 rule trinity:
     input:
-        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
+        R1=expand("results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+            sample = samples.keys()),
+        R2=expand("results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+            sample = samples.keys())
     output:
         "results/trinity/{sample}/Trinity.fasta.gz"
     log:
