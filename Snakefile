@@ -153,7 +153,9 @@ rule sortmerna:
         db = expand("resources/sortmerna/{db}.fasta",
             db = config["sortmerna"]["dbs"])
     output:
-        rR1 = "results/sortmerna/{sample}.rRNA_fwd.fastq.gz",
+        # Constrain wildcard 'sample' to _not_ begin with 'concatenate' --
+        # rule concatenateReads will handle the forbidden case
+        rR1 = "results/sortmerna/{sample, (?!concatenate_).*}.rRNA_fwd.fastq.gz",
         rR2 = "results/sortmerna/{sample}.rRNA_rev.fastq.gz",
         mR1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
         mR2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
@@ -182,6 +184,23 @@ rule sortmerna:
         mv {params.workdir}/*.gz {params.outdir}
         mv {params.workdir}/{wildcards.sample}.rRNA.log {log.reportlog}
         rm -rf {params.workdir}
+        """
+
+rule concatenateReads:
+    output:
+        R1 = "results/sortmerna/concatenate_{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/concatenate_{sample}.{RNA}_rev.fastq.gz"
+    input:
+        R1 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_fwd.fastq.gz",
+                               sample = config["concatenateReads"][wc.sample])
+        R2 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_.fastq.gz",
+                               sample = config["concatenateReads"][wc.sample])
+    log: "results/logs/sortmerna/concatenate_{sample}.{RNA}.log"
+    shell:
+        """
+        exec &> {log}       
+        zcat {input.R1} | gzip -c > {output.R1}
+        zcat {input.R2} | gzip -c > {output.R2}
         """
 
 rule fastqc:
