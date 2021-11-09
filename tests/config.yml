@@ -35,3 +35,9 @@ busco:
       url: "https://busco-data.ezlab.org/v4/data/lineages/alveolata_odb10.2020-09-10.tar.gz"
     stramenopiles_odb10:
       url: "https://busco-data.ezlab.org/v4/data/lineages/stramenopiles_odb10.2020-08-05.tar.gz"
+concatenateReads:
+  env:
+    - P21817_101 # {sample} as used in snakemake non-concatenate preprocessing rules, e.g., sortMeRna
+    - P21817_102
+    - P21817_103
+    - P21817_104
