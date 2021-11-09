@@ -8,6 +8,18 @@ configfile: prependWfd("config/config.yml")
             
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
 samples = read_samples(prependWfd(config["sample_list"]))
+# If there are samples to concatenate reads for, set up the sample wildcard
+# in the samples dictionary
+for sample in config["concatenateReads"].keys():
+    strandness = ""
+    for s in config["concatenateReads"][sample]:
+        samples[s]["type"] = "concat"
+        strandness = samples[s]["strandness"]
+    samples[sample] = {"type": "transcriptome",
+                    "R1": f"results/sortmerna/concatenate_{sample}.mRNA_fwd.fastq.gz",
+                    "R2": f"results/sortmerna/concatenate_{sample}.mRNA_rev.fastq.gz",
+                    "strandness": strandness
+                       }
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
@@ -156,9 +168,9 @@ rule sortmerna:
         # Constrain wildcard 'sample' to _not_ begin with 'concatenate' --
         # rule concatenateReads will handle the forbidden case
         rR1 = "results/sortmerna/{sample, (?!concatenate_).*}.rRNA_fwd.fastq.gz",
-        rR2 = "results/sortmerna/{sample}.rRNA_rev.fastq.gz",
-        mR1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        mR2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
+        rR2 = "results/sortmerna/{sample, (?!concatenate_).*}.rRNA_rev.fastq.gz",
+        mR1 = "results/sortmerna/{sample, (?!concatenate_).*}.mRNA_fwd.fastq.gz",
+        mR2 = "results/sortmerna/{sample, (?!concatenate_).*}.mRNA_rev.fastq.gz"
     log:
         runlog="results/logs/sortmerna/{sample}.log",
         reportlog="results/sortmerna/{sample}.log"
@@ -192,15 +204,20 @@ rule concatenateReads:
         R2 = "results/sortmerna/concatenate_{sample}.{RNA}_rev.fastq.gz"
     input:
         R1 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_fwd.fastq.gz",
-                               sample = config["concatenateReads"][wc.sample])
-        R2 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_.fastq.gz",
+                               sample = config["concatenateReads"][wc.sample]),
+        R2 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_rev.fastq.gz",
                                sample = config["concatenateReads"][wc.sample])
     log: "results/logs/sortmerna/concatenate_{sample}.{RNA}.log"
+    params:
+        R1 = "$TMPDIR/concatenate_{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "$TMPDIR/concatenate_{sample}.{RNA}_rev.fastq.gz"
     shell:
         """
         exec &> {log}       
-        zcat {input.R1} | gzip -c > {output.R1}
-        zcat {input.R2} | gzip -c > {output.R2}
+        zcat {input.R1} | gzip -c > {params.R1}
+        zcat {input.R2} | gzip -c > {params.R2}
+        mv {params.R1} {output.R1}
+        mv {params.R2} {output.R2}
         """
 
 rule fastqc:
@@ -320,10 +337,8 @@ def trinity_strand_string(wildcards):
 
 rule trinity:
     input:
-        R1=expand("results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-            sample = samples.keys()),
-        R2=expand("results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-            sample = samples.keys())
+        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
         "results/trinity/{sample}/Trinity.fasta.gz"
     log:
@@ -342,6 +357,7 @@ rule trinity:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
+        exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         gunzip -c {input.R1} > {params.R1}
