@@ -55,9 +55,9 @@ concatenate:
   - "resources/transcriptomeFromGenome/Phaeodactylum.barrnap_filtered.fasta.gz"
   - "resources/transcriptome/Heterocapsa.fasta.gz"
 concatenateReads:
-  env_2103XX.2105XX:
-    - samplename1 # {sample} as used in snakemake non-concatenate preprocessing rules, e.g., sortMeRna
-    - samplename2
-    - samplename3
-    - samplename4
+  env_P21817_101.P21817_102.P21817_103.P21817_104:
+    - P21817_101
+    - P21817_102
+    - P21817_103
+    - P21817_104
     
