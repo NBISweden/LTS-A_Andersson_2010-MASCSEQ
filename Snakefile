@@ -15,7 +15,7 @@ for sample in config["concatenateReads"].keys():
     for s in config["concatenateReads"][sample]:
         samples[s]["type"] = "concat"
         strandness = samples[s]["strandness"]
-    samples[sample] = {"type": "transcriptome",
+    samples[f"concatenate_{sample}"] = {"type": "transcriptome",
                     "R1": f"results/sortmerna/concatenate_{sample}.mRNA_fwd.fastq.gz",
                     "R2": f"results/sortmerna/concatenate_{sample}.mRNA_rev.fastq.gz",
                     "strandness": strandness
@@ -26,7 +26,6 @@ wildcard_constraints:
 
 localrules:
     all,
-    link,
     linkReferenceGenome,
     download_rna,
     multiqc,
@@ -68,9 +67,12 @@ def kallisto_output(samples, config):
 def busco_input(samples, config):
     files = []
     for sample, lineage in config["busco"]["sample_lineages"].items():
-        if samples[sample]["type"] == "transcriptome":
-            for assembler in config["assemblers"]:
-                files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+        try:
+            if samples[sample]["type"] == "transcriptome":
+                for assembler in config["assemblers"]:
+                    files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+        except KeyError:
+            continue
     return files
 
 rule all:
@@ -87,25 +89,11 @@ rule all:
 ### PREPROCESSING ###
 #####################
 
-rule link:
-    """Links input files so that naming is consistent within workflow"""
-    input:
-        lambda wildcards: samples[wildcards.sample][wildcards.R]
-    output:
-        temp("results/intermediate/{sample}_{R}.fastq.gz")
-    params:
-        i = lambda wildcards, input: os.path.abspath(input[0]),
-        o = lambda wildcards, output: os.path.abspath(output[0])
-    shell:
-        """
-        ln -s {params.i} {params.o}
-        """
-
 rule cutadapt:
     """Runs cutadapt on raw input files"""
     input:
-        R1 = ancient("results/intermediate/{sample}_R1.fastq.gz"),
-        R2 = ancient("results/intermediate/{sample}_R2.fastq.gz")
+        R1 = lambda wildcards: samples[wildcards.sample]["R1"],
+        R2 = lambda wildcards: samples[wildcards.sample]["R2"]
     output:
         R1 = "results/cutadapt/{sample}_R1.fastq.gz",
         R2 = "results/cutadapt/{sample}_R2.fastq.gz"
@@ -124,7 +112,7 @@ rule cutadapt:
         """
         cutadapt -m {params.minlen} -j {threads} -a {params.R1_adapter} \
             -A {params.R2_adapter} -o {output.R1} -p {output.R2} \
-            {input.R1} {input.R2} > {log} 2>&1
+            {input[0]} {input[1]} > {log} 2>&1
         """
 
 rule download_rna:
@@ -160,8 +148,8 @@ rule sortmerna:
     a pair is flagged as rRNA, both are placed in the 'rRNA' fraction.
     """
     input:
-        R1 = "results/cutadapt/{sample}_R1.fastq.gz",
-        R2 = "results/cutadapt/{sample}_R2.fastq.gz",
+        R1 = rules.cutadapt.output.R1,
+        R2 = rules.cutadapt.output.R2,
         db = expand("resources/sortmerna/{db}.fasta",
             db = config["sortmerna"]["dbs"])
     output:
@@ -243,11 +231,12 @@ rule fastqc:
 rule multiqc:
     input:
         expand("results/logs/cutadapt/{sample}.log",
-            sample=samples.keys()),
+            sample=[sample for sample in samples.keys() if not sample.replace("concatenate_", "") in config["concatenateReads"].keys()]),
         expand("results/sortmerna/{sample}.log",
-            sample=samples.keys()),
+            sample=[sample for sample in samples.keys() if not sample.replace("concatenate_", "") in config["concatenateReads"].keys()]),
         expand("results/fastqc/{sample}.{RNA}_{R}_fastqc.zip",
-            sample=samples.keys(), R=["rev","fwd"], RNA=["mRNA","rRNA"])
+            sample=[sample for sample in samples.keys() if not sample.replace("concatenate_", "") in config["concatenateReads"].keys()],
+            R=["rev","fwd"], RNA=["mRNA","rRNA"])
     output:
         "results/multiqc/multiqc.html"
     log:
@@ -259,7 +248,7 @@ rule multiqc:
         "envs/multiqc.yml"
     shell:
         """
-        multiqc -o {params.outdir} -n {params.base} {input} > {log} 2>&1
+        multiqc -f -o {params.outdir} -n {params.base} {input} > {log} 2>&1
         """
 
 ################
