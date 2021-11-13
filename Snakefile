@@ -1137,8 +1137,8 @@ rule detonate:
     shell:
         """
         gunzip -c {input.fa} > {params.tmp_fa}
-        rsem-eval-calculate-score {input.R1},{input.R2} {params.tmp_fa} \
-            {params.outdir}/{wildcards.sample} {params.read_length} -p {threads} >{log} 2>&1
+        rsem-eval-calculate-score -p {threads} --paired-end {input.R1} {input.R2} {params.tmp_fa} \
+            {params.outdir}/{wildcards.sample} {params.read_length} >{log} 2>&1
         """
 
 
@@ -1208,7 +1208,7 @@ rule transdecoder_predict:
     params:
         gencode=lambda wildcards: genetic_code(wildcards),
         tmpdir="$TMPDIR/{assembler}.{sample}",
-        ln="$TMPDIR/{assembler}.{sample}/{sample}",
+        ln="$TMPDIR/{assembler}.{sample}/{sample}.fa",
         fa=lambda wildcards, input: os.path.abspath(input[0]),
         outdir=lambda wildcards, output: os.path.dirname(output[0])
     log: "results/logs/transdecoder/{assembler}.{sample}.predict.log"
@@ -1221,7 +1221,7 @@ rule transdecoder_predict:
         exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
-        ln -s {params.fa} {params.ln}
+        gunzip -c {params.fa} > {params.ln}
         TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
         mv {wildcards.sample}.transdecoder* {params.outdir}
         rm -r {params.tmpdir}
