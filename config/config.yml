@@ -54,6 +54,10 @@ concatenate:
   - "resources/transcriptomeFromGenome/Tetrahymena.barrnap_filtered.fasta.gz"
   - "resources/transcriptomeFromGenome/Phaeodactylum.barrnap_filtered.fasta.gz"
   - "resources/transcriptome/Heterocapsa.fasta.gz"
+transdecoder:
+  # Added extra param option here to be able to set '--no_refine_starts':
+  # start refinement identifies potential start codons for 5' partial ORFs using a PWM, process on by default.
+  extra_params: ""
 concatenateReads:
   env_300321.110521:
     - P21817_101

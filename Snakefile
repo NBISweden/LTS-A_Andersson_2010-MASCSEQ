@@ -80,7 +80,7 @@ rule all:
     input:
         "results/multiqc/multiqc.html",
         busco_input(samples, config),
-        expand("results/{assembler}/{sample}/{sample}.filtered.fasta.gz",
+        expand("results/detonate/{assembler}/{sample}/{sample}.score",
             assembler = config["assemblers"],
             sample = [sample for sample in samples.keys() if samples[sample]["type"] == "transcriptome"])
         #kallisto_output(samples, config)
@@ -1105,41 +1105,6 @@ rule stVsBulkComparisonGenome:
         echo "Done"
 
         """
-        
-
-
-###################
-### ASSEMBLY QC ###
-###################
-rule detonate:
-    input:
-        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-        fa = assembly_input
-    output:
-        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
-        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
-        "results/detonate/{assembler}/{sample}/{sample}.score",
-        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
-        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
-        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
-    log:
-        "results/logs/detonate/{sample}.{assembler}.log"
-    params:
-        outdir = lambda wildcards, output: os.path.dirname(output[1]),
-        read_length = config["read_length"],
-        tmp_fa = "$TMPDIR/{sample}.{assembler}.fa"
-    conda:
-        "envs/detonate.yml"
-    threads: 10
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
-    shell:
-        """
-        gunzip -c {input.fa} > {params.tmp_fa}
-        rsem-eval-calculate-score -p {threads} --paired-end {input.R1} {input.R2} {params.tmp_fa} \
-            {params.outdir}/{wildcards.sample} {params.read_length} >{log} 2>&1
-        """
 
 
 ##################
@@ -1208,9 +1173,10 @@ rule transdecoder_predict:
     params:
         gencode=lambda wildcards: genetic_code(wildcards),
         tmpdir="$TMPDIR/{assembler}.{sample}",
-        ln="$TMPDIR/{assembler}.{sample}/{sample}.fa",
+        ln="$TMPDIR/{assembler}.{sample}/{sample}",
         fa=lambda wildcards, input: os.path.abspath(input[0]),
-        outdir=lambda wildcards, output: os.path.dirname(output[0])
+        outdir=lambda wildcards, output: os.path.dirname(output[0]),
+        extra_params = config["transdecoder"]["extra_params"]
     log: "results/logs/transdecoder/{assembler}.{sample}.predict.log"
     conda: "envs/transdecoder.yml"
     shadow: "full"
@@ -1222,7 +1188,7 @@ rule transdecoder_predict:
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
         gunzip -c {params.fa} > {params.ln}
-        TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
+        TransDecoder.Predict {params.extra_params} -t {params.ln} -O {params.outdir} -G {params.gencode}
         mv {wildcards.sample}.transdecoder* {params.outdir}
         rm -r {params.tmpdir}
         """
@@ -1293,4 +1259,38 @@ rule run_busco:
             -o {wildcards.sample} -c {threads} > {log} 2>&1
         rsync -azv {params.tmpdir}/{wildcards.sample}/* {params.outdir}/
         rm -rf {params.tmpdir}
+        """
+
+
+###################
+### ASSEMBLY QC ###
+###################
+rule detonate:
+    input:
+        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+        fa = "results/{assembler}/{sample}/{sample}.filtered.fasta.gz"
+    output:
+        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score",
+        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
+        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
+    log:
+        "results/logs/detonate/{sample}.{assembler}.log"
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[1]),
+        read_length = config["read_length"],
+        tmp_fa = "$TMPDIR/{sample}.{assembler}.fa"
+    conda:
+        "envs/detonate.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+    shell:
+        """
+        gunzip -c {input.fa} > {params.tmp_fa}
+        rsem-eval-calculate-score -p {threads} --paired-end {input.R1} {input.R2} {params.tmp_fa} \
+            {params.outdir}/{wildcards.sample} {params.read_length} >{log} 2>&1
         """
