@@ -176,8 +176,10 @@ rule sortmerna:
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
+        gunzip -c {input.R1} > {params.workdir}/R1
+        gunzip -c {input.R2} > {params.workdir}/R2
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
-            --reads {input.R1} --reads {input.R2} {params.string} --paired_in \
+            --reads R1 --reads R2 {params.string} --paired_in \
             --out2 --aligned {params.workdir}/{wildcards.sample}.rRNA \
             --other {params.workdir}/{wildcards.sample}.mRNA > {log.runlog} 2>&1
         gzip {params.workdir}/*.fastq

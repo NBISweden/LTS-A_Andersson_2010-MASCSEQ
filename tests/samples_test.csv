@@ -1,7 +1,0 @@
-sample_id,R1,R2,strandness,reference,type
-P18363_101,data/P18363_101_R1.100k.fastq.gz,data/P18363_101_R2.100k.fastq.gz,sense,Phaeodactylum,genome
-P18363_103,data/P18363_103_R1.100k.fastq.gz,data/P18363_103_R2.100k.fastq.gz,sense,Heterocapsa,transcriptome
-P21817_101,data/P21817_101_R1.fastq.gz,data/P21817_101_R2.fastq.gz,sense,none,transcriptome
-P21817_102,data/P21817_102_R1.fastq.gz,data/P21817_102_R2.fastq.gz,sense,none,transcriptome
-P21817_103,data/P21817_103_R1.fastq.gz,data/P21817_103_R2.fastq.gz,sense,none,transcriptome
-P21817_104,data/P21817_104_R1.fastq.gz,data/P21817_104_R2.fastq.gz,sense,none,transcriptome
