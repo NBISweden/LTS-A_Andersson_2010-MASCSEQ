@@ -8,6 +8,12 @@ configfile: prependWfd("config/config.yml")
             
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
 samples = read_samples(prependWfd(config["sample_list"]))
+# Set cutadapt extra params
+for sample in samples.keys():
+    try:
+        config["cutadapt"]["sample_params"][sample]
+    except KeyError:
+        config["cutadapt"]["sample_params"][sample] = ""
 # If there are samples to concatenate reads for, set up the sample wildcard
 # in the samples dictionary
 for sample in config["concatenateReads"].keys():
@@ -103,16 +109,17 @@ rule cutadapt:
     params:
         R1_adapter = config["cutadapt"]["R1_adapter"],
         R2_adapter = config["cutadapt"]["R2_adapter"],
-        minlen = config["cutadapt"]["minlen"]
+        minlen = config["cutadapt"]["minlen"],
+        extra_params = lambda wildcards: config["cutadapt"]["sample_params"][wildcards.sample]
     conda:
         "envs/cutadapt.yml"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
     shell:
         """
-        cutadapt -m {params.minlen} -j {threads} -a {params.R1_adapter} \
-            -A {params.R2_adapter} -o {output.R1} -p {output.R2} \
-            {input[0]} {input[1]} > {log} 2>&1
+        cutadapt {params.extra_params} -m {params.minlen} -j {threads} \
+            -a {params.R1_adapter} -A {params.R2_adapter} -o {output.R1} \
+            -p {output.R2} {input[0]} {input[1]} > {log} 2>&1
         """
 
 rule download_rna:
