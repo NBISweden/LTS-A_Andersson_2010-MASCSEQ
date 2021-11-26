@@ -111,7 +111,9 @@ rule cutadapt:
         R1_adapter = config["cutadapt"]["R1_adapter"],
         R2_adapter = config["cutadapt"]["R2_adapter"],
         minlen = config["cutadapt"]["minlen"],
-        extra_params = lambda wildcards: config["cutadapt"]["sample_params"][wildcards.sample]
+        extra_params = lambda wildcards: config["cutadapt"]["sample_params"][wildcards.sample],
+        R1 = "$TMPDIR/{sample}_R1.fastq.gz",
+        R2 = "$TMPDIR/{sample}_R2.fastq.gz"
     conda:
         "envs/cutadapt.yml"
     resources:
@@ -119,8 +121,10 @@ rule cutadapt:
     shell:
         """
         cutadapt {params.extra_params} -m {params.minlen} -j {threads} \
-            -a {params.R1_adapter} -A {params.R2_adapter} -o {output.R1} \
-            -p {output.R2} {input[0]} {input[1]} > {log} 2>&1
+            -a {params.R1_adapter} -A {params.R2_adapter} -o {params.R1} \
+            -p {params.R2} {input[0]} {input[1]} > {log} 2>&1
+        mv {params.R1} {output.R1}
+        mv {params.R2} {output.R2}
         """
 
 rule download_rna:
