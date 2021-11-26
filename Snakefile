@@ -43,7 +43,8 @@ localrules:
     stVsBulkComparisonTranscriptome,
     stVsBulkComparisonGenome,
     filter_barrnap_transcripts,
-    concat_fasta
+    concat_fasta,
+    concatenateReads
     
 def busco_input(samples, config):
     files = []
