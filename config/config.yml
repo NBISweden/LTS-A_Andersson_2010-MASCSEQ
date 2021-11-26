@@ -9,6 +9,9 @@ cutadapt:
   R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
   R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
   minlen: 50
+  # Extra sample-specific parameters
+  sample_params:
+    P21817_104: "-e 0.2"
 sortmerna:
   dbs:
     - "silva-arc-16s-id95"

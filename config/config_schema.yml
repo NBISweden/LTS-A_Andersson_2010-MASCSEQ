@@ -35,6 +35,8 @@ properties:
       minlen:
         type: integer
         description: Minimum read length for cutadapt
+      sample_params:
+        type: object
   sortmerna:
     type: object
     default:
