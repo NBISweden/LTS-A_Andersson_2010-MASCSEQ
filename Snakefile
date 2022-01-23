@@ -365,11 +365,8 @@ rule trinity:
         exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
-        gunzip -c {input.R1} > {params.R1}
-        gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G 
-        rm {params.R1} {params.R2}
+        Trinity --seqType fq {params.ss_lib_type} --left {input.R1} --right {input.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G 
         gzip {params.tmpdir}/Trinity.fasta
         mv {params.tmpdir}/* {params.outdir}/
         """
