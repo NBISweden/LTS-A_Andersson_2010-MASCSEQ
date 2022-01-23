@@ -175,6 +175,8 @@ rule sortmerna:
         runlog="results/logs/sortmerna/{sample}.log",
         reportlog="results/sortmerna/{sample}.log"
     params:
+        R1 = "$TMPDIR/{sample}_R1.fastq",
+        R2 = "$TMPDIR/{sample}_R2.fastq",
         string = lambda wildcards, input: " ".join([f"--ref {x}" for x in input.db]),
         workdir = "$TMPDIR/sortmerna/{sample}.wd",
         outdir = lambda wildcards, output: os.path.dirname(output.rR1)
@@ -182,16 +184,16 @@ rule sortmerna:
     conda:
         "envs/sortmerna.yml"
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 14400
     shell:
         """
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
-        gunzip -c {input.R1} > {params.workdir}/R1
-        gunzip -c {input.R2} > {params.workdir}/R2
+        gunzip -c {input.R1} > {params.R1}
+        gunzip -c {input.R2} > {params.R2}
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
-            --reads R1 --reads R2 {params.string} --paired_in \
+            --reads {params.R1} --reads {params.R2} {params.string} --paired_in \
             --out2 --aligned {params.workdir}/{wildcards.sample}.rRNA \
             --other {params.workdir}/{wildcards.sample}.mRNA > {log.runlog} 2>&1
         gzip {params.workdir}/*.fastq
@@ -357,7 +359,7 @@ rule trinity:
         R1 = "$TMPDIR/{sample}.trinity/R1",
         R2 = "$TMPDIR/{sample}.trinity/R2"
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 240
     shell:
         """
         exec &> {log}
