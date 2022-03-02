@@ -9,6 +9,9 @@ cutadapt:
   R1_adapter: "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
   R2_adapter: "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
   minlen: 50
+  # Extra sample-specific parameters
+  sample_params:
+    P21817_104: "-e 0.2"
 sortmerna:
   dbs:
     - "silva-arc-16s-id95"
@@ -54,3 +57,13 @@ concatenate:
   - "resources/transcriptomeFromGenome/Tetrahymena.barrnap_filtered.fasta.gz"
   - "resources/transcriptomeFromGenome/Phaeodactylum.barrnap_filtered.fasta.gz"
   - "resources/transcriptome/Heterocapsa.fasta.gz"
+transdecoder:
+  # Added extra param option here to be able to set '--no_refine_starts':
+  # start refinement identifies potential start codons for 5' partial ORFs using a PWM, process on by default.
+  extra_params: ""
+concatenateReads:
+  env_300321.110521:
+    - P21817_101
+    - P21817_102
+    - P21817_103
+    - P21817_104

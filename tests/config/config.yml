@@ -1,4 +1,4 @@
-sample_list: "tests/samples_test.csv"
+sample_list: "config/samples.csv"
 read_length: 150
 assemblers:
   - "trinity"
@@ -35,3 +35,12 @@ busco:
       url: "https://busco-data.ezlab.org/v4/data/lineages/alveolata_odb10.2020-09-10.tar.gz"
     stramenopiles_odb10:
       url: "https://busco-data.ezlab.org/v4/data/lineages/stramenopiles_odb10.2020-08-05.tar.gz"
+concatenateReads:
+  env_300321.110521:
+    - P21817_101 # {sample} as used in snakemake non-concatenate preprocessing rules, e.g., sortMeRna
+    - P21817_102
+    - P21817_103
+transdecoder:
+  # Added extra param option here to be able to set '--no_refine_starts':
+  # start refinement identifies potential start codons for 5' partial ORFs using a PWM, process on by default.
+  extra_params: "--no_refine_starts"

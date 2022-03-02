@@ -8,13 +8,30 @@ configfile: prependWfd("config/config.yml")
             
 validate(config, schema=prependWfd("config/config_schema.yml"), set_default=True)
 samples = read_samples(prependWfd(config["sample_list"]))
+# Set cutadapt extra params
+for sample in samples.keys():
+    try:
+        config["cutadapt"]["sample_params"][sample]
+    except KeyError:
+        config["cutadapt"]["sample_params"][sample] = ""
+# If there are samples to concatenate reads for, set up the sample wildcard
+# in the samples dictionary
+for sample in config["concatenateReads"].keys():
+    strandness = ""
+    for s in config["concatenateReads"][sample]:
+        samples[s]["type"] = "concat"
+        strandness = samples[s]["strandness"]
+    samples[f"concatenate_{sample}"] = {"type": "transcriptome",
+                    "R1": f"results/sortmerna/concatenate_{sample}.mRNA_fwd.fastq.gz",
+                    "R2": f"results/sortmerna/concatenate_{sample}.mRNA_rev.fastq.gz",
+                    "strandness": strandness
+                       }
 
 wildcard_constraints:
     assembler = "transabyss|trinity"
 
 localrules:
     all,
-    link,
     linkReferenceGenome,
     download_rna,
     multiqc,
@@ -56,9 +73,12 @@ def kallisto_output(samples, config):
 def busco_input(samples, config):
     files = []
     for sample, lineage in config["busco"]["sample_lineages"].items():
-        if samples[sample]["type"] == "transcriptome":
-            for assembler in config["assemblers"]:
-                files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+        try:
+            if samples[sample]["type"] == "transcriptome":
+                for assembler in config["assemblers"]:
+                    files.append(f"results/busco/{assembler}/{sample}/short_summary.specific.{lineage}.{sample}.txt")
+        except KeyError:
+            continue
     return files
 
 rule all:
@@ -66,7 +86,7 @@ rule all:
     input:
         "results/multiqc/multiqc.html",
         busco_input(samples, config),
-        expand("results/{assembler}/{sample}/{sample}.filtered.fasta.gz",
+        expand("results/detonate/{assembler}/{sample}/{sample}.score",
             assembler = config["assemblers"],
             sample = [sample for sample in samples.keys() if samples[sample]["type"] == "transcriptome"])
         #kallisto_output(samples, config)
@@ -75,25 +95,11 @@ rule all:
 ### PREPROCESSING ###
 #####################
 
-rule link:
-    """Links input files so that naming is consistent within workflow"""
-    input:
-        lambda wildcards: samples[wildcards.sample][wildcards.R]
-    output:
-        temp("results/intermediate/{sample}_{R}.fastq.gz")
-    params:
-        i = lambda wildcards, input: os.path.abspath(input[0]),
-        o = lambda wildcards, output: os.path.abspath(output[0])
-    shell:
-        """
-        ln -s {params.i} {params.o}
-        """
-
 rule cutadapt:
     """Runs cutadapt on raw input files"""
     input:
-        R1 = ancient("results/intermediate/{sample}_R1.fastq.gz"),
-        R2 = ancient("results/intermediate/{sample}_R2.fastq.gz")
+        R1 = lambda wildcards: samples[wildcards.sample]["R1"],
+        R2 = lambda wildcards: samples[wildcards.sample]["R2"]
     output:
         R1 = "results/cutadapt/{sample}_R1.fastq.gz",
         R2 = "results/cutadapt/{sample}_R2.fastq.gz"
@@ -103,16 +109,17 @@ rule cutadapt:
     params:
         R1_adapter = config["cutadapt"]["R1_adapter"],
         R2_adapter = config["cutadapt"]["R2_adapter"],
-        minlen = config["cutadapt"]["minlen"]
+        minlen = config["cutadapt"]["minlen"],
+        extra_params = lambda wildcards: config["cutadapt"]["sample_params"][wildcards.sample]
     conda:
         "envs/cutadapt.yml"
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 2
     shell:
         """
-        cutadapt -m {params.minlen} -j {threads} -a {params.R1_adapter} \
-            -A {params.R2_adapter} -o {output.R1} -p {output.R2} \
-            {input.R1} {input.R2} > {log} 2>&1
+        cutadapt {params.extra_params} -m {params.minlen} -j {threads} \
+            -a {params.R1_adapter} -A {params.R2_adapter} -o {output.R1} \
+            -p {output.R2} {input[0]} {input[1]} > {log} 2>&1
         """
 
 rule download_rna:
@@ -148,15 +155,17 @@ rule sortmerna:
     a pair is flagged as rRNA, both are placed in the 'rRNA' fraction.
     """
     input:
-        R1 = "results/cutadapt/{sample}_R1.fastq.gz",
-        R2 = "results/cutadapt/{sample}_R2.fastq.gz",
+        R1 = rules.cutadapt.output.R1,
+        R2 = rules.cutadapt.output.R2,
         db = expand("resources/sortmerna/{db}.fasta",
             db = config["sortmerna"]["dbs"])
     output:
-        rR1 = "results/sortmerna/{sample}.rRNA_fwd.fastq.gz",
-        rR2 = "results/sortmerna/{sample}.rRNA_rev.fastq.gz",
-        mR1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        mR2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz"
+        # Constrain wildcard 'sample' to _not_ begin with 'concatenate' --
+        # rule concatenateReads will handle the forbidden case
+        rR1 = "results/sortmerna/{sample, (?!concatenate_).*}.rRNA_fwd.fastq.gz",
+        rR2 = "results/sortmerna/{sample, (?!concatenate_).*}.rRNA_rev.fastq.gz",
+        mR1 = "results/sortmerna/{sample, (?!concatenate_).*}.mRNA_fwd.fastq.gz",
+        mR2 = "results/sortmerna/{sample, (?!concatenate_).*}.mRNA_rev.fastq.gz"
     log:
         runlog="results/logs/sortmerna/{sample}.log",
         reportlog="results/sortmerna/{sample}.log"
@@ -174,14 +183,38 @@ rule sortmerna:
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         rm -rf {params.workdir}
         mkdir -p {params.workdir}
+        gunzip -c {input.R1} > {params.workdir}/R1
+        gunzip -c {input.R2} > {params.workdir}/R2
         sortmerna --threads {threads} --workdir {params.workdir} --fastx \
-            --reads {input.R1} --reads {input.R2} {params.string} --paired_in \
+            --reads R1 --reads R2 {params.string} --paired_in \
             --out2 --aligned {params.workdir}/{wildcards.sample}.rRNA \
             --other {params.workdir}/{wildcards.sample}.mRNA > {log.runlog} 2>&1
         gzip {params.workdir}/*.fastq
         mv {params.workdir}/*.gz {params.outdir}
         mv {params.workdir}/{wildcards.sample}.rRNA.log {log.reportlog}
         rm -rf {params.workdir}
+        """
+
+rule concatenateReads:
+    output:
+        R1 = "results/sortmerna/concatenate_{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "results/sortmerna/concatenate_{sample}.{RNA}_rev.fastq.gz"
+    input:
+        R1 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_fwd.fastq.gz",
+                               sample = config["concatenateReads"][wc.sample]),
+        R2 = lambda wc: expand("results/sortmerna/{sample}.{{RNA}}_rev.fastq.gz",
+                               sample = config["concatenateReads"][wc.sample])
+    log: "results/logs/sortmerna/concatenate_{sample}.{RNA}.log"
+    params:
+        R1 = "$TMPDIR/concatenate_{sample}.{RNA}_fwd.fastq.gz",
+        R2 = "$TMPDIR/concatenate_{sample}.{RNA}_rev.fastq.gz"
+    shell:
+        """
+        exec &> {log}       
+        zcat {input.R1} | gzip -c > {params.R1}
+        zcat {input.R2} | gzip -c > {params.R2}
+        mv {params.R1} {output.R1}
+        mv {params.R2} {output.R2}
         """
 
 rule fastqc:
@@ -207,11 +240,12 @@ rule fastqc:
 rule multiqc:
     input:
         expand("results/logs/cutadapt/{sample}.log",
-            sample=samples.keys()),
+            sample=[sample for sample in samples.keys() if not sample.replace("concatenate_", "") in config["concatenateReads"].keys()]),
         expand("results/sortmerna/{sample}.log",
-            sample=samples.keys()),
+            sample=[sample for sample in samples.keys() if not sample.replace("concatenate_", "") in config["concatenateReads"].keys()]),
         expand("results/fastqc/{sample}.{RNA}_{R}_fastqc.zip",
-            sample=samples.keys(), R=["rev","fwd"], RNA=["mRNA","rRNA"])
+            sample=[sample for sample in samples.keys() if not sample.replace("concatenate_", "") in config["concatenateReads"].keys()],
+            R=["rev","fwd"], RNA=["mRNA","rRNA"])
     output:
         "results/multiqc/multiqc.html"
     log:
@@ -223,7 +257,7 @@ rule multiqc:
         "envs/multiqc.yml"
     shell:
         """
-        multiqc -o {params.outdir} -n {params.base} {input} > {log} 2>&1
+        multiqc -f -o {params.outdir} -n {params.base} {input} > {log} 2>&1
         """
 
 ################
@@ -301,10 +335,8 @@ def trinity_strand_string(wildcards):
 
 rule trinity:
     input:
-        R1=expand("results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-            sample = samples.keys()),
-        R2=expand("results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-            sample = samples.keys())
+        R1="results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2="results/sortmerna/{sample}.mRNA_rev.fastq.gz"
     output:
         "results/trinity/{sample}/Trinity.fasta.gz"
     log:
@@ -323,13 +355,11 @@ rule trinity:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 48
     shell:
         """
+        exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
-        gunzip -c {input.R1} > {params.R1}
-        gunzip -c {input.R2} > {params.R2}
         max_mem=$(({params.cpumem} * {threads}))
-        Trinity --seqType fq {params.ss_lib_type} --left {params.R1} --right {params.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G 
-        rm {params.R1} {params.R2}
+        Trinity --seqType fq {params.ss_lib_type} --left {input.R1} --right {input.R2} --CPU {threads} --output {params.tmpdir} --max_memory ${{max_mem}}G 
         gzip {params.tmpdir}/Trinity.fasta
         mv {params.tmpdir}/* {params.outdir}/
         """
@@ -1081,41 +1111,6 @@ rule stVsBulkComparisonGenome:
         echo "Done"
 
         """
-        
-
-
-###################
-### ASSEMBLY QC ###
-###################
-rule detonate:
-    input:
-        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
-        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
-        fa = assembly_input
-    output:
-        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
-        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
-        "results/detonate/{assembler}/{sample}/{sample}.score",
-        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
-        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
-        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
-    log:
-        "results/logs/detonate/{sample}.{assembler}.log"
-    params:
-        outdir = lambda wildcards, output: os.path.dirname(output[1]),
-        read_length = config["read_length"],
-        tmp_fa = "$TMPDIR/{sample}.{assembler}.fa"
-    conda:
-        "envs/detonate.yml"
-    threads: 10
-    resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
-    shell:
-        """
-        gunzip -c {input.fa} > {params.tmp_fa}
-        rsem-eval-calculate-score {input.R1},{input.R2} {params.tmp_fa} \
-            {params.outdir}/{wildcards.sample} {params.read_length} -p {threads} >{log} 2>&1
-        """
 
 
 ##################
@@ -1186,7 +1181,8 @@ rule transdecoder_predict:
         tmpdir="$TMPDIR/{assembler}.{sample}",
         ln="$TMPDIR/{assembler}.{sample}/{sample}",
         fa=lambda wildcards, input: os.path.abspath(input[0]),
-        outdir=lambda wildcards, output: os.path.dirname(output[0])
+        outdir=lambda wildcards, output: os.path.dirname(output[0]),
+        extra_params = config["transdecoder"]["extra_params"]
     log: "results/logs/transdecoder/{assembler}.{sample}.predict.log"
     conda: "envs/transdecoder.yml"
     shadow: "full"
@@ -1197,8 +1193,8 @@ rule transdecoder_predict:
         exec &> {log}
         if [ -z ${{TMPDIR+x}} ]; then TMPDIR=temp; fi
         mkdir -p {params.tmpdir}
-        ln -s {params.fa} {params.ln}
-        TransDecoder.Predict -t {params.ln} -O {params.outdir} -G {params.gencode}
+        gunzip -c {params.fa} > {params.ln}
+        TransDecoder.Predict {params.extra_params} -t {params.ln} -O {params.outdir} -G {params.gencode}
         mv {wildcards.sample}.transdecoder* {params.outdir}
         rm -r {params.tmpdir}
         """
@@ -1269,4 +1265,38 @@ rule run_busco:
             -o {wildcards.sample} -c {threads} > {log} 2>&1
         rsync -azv {params.tmpdir}/{wildcards.sample}/* {params.outdir}/
         rm -rf {params.tmpdir}
+        """
+
+
+###################
+### ASSEMBLY QC ###
+###################
+rule detonate:
+    input:
+        R1 = "results/sortmerna/{sample}.mRNA_fwd.fastq.gz",
+        R2 = "results/sortmerna/{sample}.mRNA_rev.fastq.gz",
+        fa = "results/{assembler}/{sample}/{sample}.filtered.fasta.gz"
+    output:
+        "results/detonate/{assembler}/{sample}/{sample}.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.isoforms.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score",
+        "results/detonate/{assembler}/{sample}/{sample}.score.genes.results",
+        "results/detonate/{assembler}/{sample}/{sample}.score.isoforms.results",
+        directory("results/detonate/{assembler}/{sample}/{sample}.stat")
+    log:
+        "results/logs/detonate/{sample}.{assembler}.log"
+    params:
+        outdir = lambda wildcards, output: os.path.dirname(output[1]),
+        read_length = config["read_length"],
+        tmp_fa = "$TMPDIR/{sample}.{assembler}.fa"
+    conda:
+        "envs/detonate.yml"
+    threads: 10
+    resources:
+        runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
+    shell:
+        """
+        gunzip -c {input.fa} > {params.tmp_fa}
+        rsem-eval-calculate-score -p {threads} --paired-end {input.R1} {input.R2} {params.tmp_fa} \
+            {params.outdir}/{wildcards.sample} {params.read_length} >{log} 2>&1
         """
