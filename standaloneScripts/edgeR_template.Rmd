@@ -4,6 +4,7 @@ author: "Bengt Sennblad"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 params:
+  # Change runDirectory to your preferred  output folder
   runDirectory: '/Users/bengtsb/WABI/PROJECTS/A_Andersson_2010/FromVesna220221' # '~/Desktop/New_trim_ST_data/R_script_MASC-seq')
 ---
 
@@ -34,10 +35,11 @@ It is easy to extend the `data_sets` list to include more data sets and I would 
 
 ```{r data}
 # data sets indexed with a unique name (this name will be the compared "group" in edgeR)
+# NB! change paths to fit where your inpout files are!
 data_sets = list(
-  tet1 = "/path/to/043_Tetra_C1_new_index_stdata.tsv",
-  tet2 = "/path/to/043_Tetra_D2_new_index_stdata.tsv",
-  tet3 = "/path/to/043_Tetra_E1_new_index_stdata.tsv"
+  tet1 = "043_Tetra_C1_new_index_stdata.tsv",
+  tet2 = "043_Tetra_D2_new_index_stdata.tsv",
+  tet3 = "043_Tetra_E1_new_index_stdata.tsv"
   #Phaeo = "path/to/phaeo_st_data.tsv."
 )
 
@@ -121,7 +123,7 @@ We estimate the common dispersion of the negative binomial distribution in the m
 
 ### DGEA
 
-Next we perform a DGEA. This is done pairwise, so we first create a list with all pairwise combinations between the groups. We use edgeR's exact test and print the result as a scrollable datatable.
+Next we perform a DGEA. This is done pairwise, so we first create a list with all pairwise combinations between the groups. We use edgeR's exact test and print the result as a scrollable datatable, sorted firstly by in ascending adjusted P-value and secondly by descending logFC
 
 ```{r meanDge, results="asis"}
 # creates a list of all possible comparisons among datasets
@@ -135,13 +137,16 @@ htmltools::tagList(
            # Adjust the P-values for multiple testing
            meanDge$table$p.adjust = p.adjust(meanDge$table$PValue, method=params$adjust)
            # You may limit table to only significant hits by uncommenting of next line
-           #top_genes_mean=meanDge$table[meanDge$table$p.adjust<=0.05,]
-           meanDge$table %>%
-             datatable(rownames = FALSE,
+           #topGenes = meanDge$table[meanDge$table$p.adjust<=0.05,]
+           # and replace meanDge$table by topGenes below
+           # We order the gens by their adjusted P-values
+           meanDge$table[order(meanDge$table$p.adjust, -meanDge$table$logFC),] %>%
+             datatable(rownames = TRUE,
                        extensions = c('AutoFill', 'FixedColumns'),
                        options = list(scrollX = TRUE,
                                       autoFill = TRUE,
-                                      fixedColumns = list(leftColumns=1))
+                                      fixedColumns = list(leftColumns=1)),
+                       caption = paste(cmp, collapse = " vs ")
              ) %>%
              formatSignif(columns=c("logFC", "PValue","p.adjust"), digits=3)
            # and/or write to file if needed -- if so, uncomment next line (and change to a apoporopriate file name)
