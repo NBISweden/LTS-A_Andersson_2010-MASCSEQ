@@ -1298,7 +1298,7 @@ rule detonate:
         tmp_fa = "$TMPDIR/{sample}.{assembler}.fa"
     conda:
         "envs/detonate.yml"
-    threads: 10
+    threads: 20
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 60 * 10
     shell:
