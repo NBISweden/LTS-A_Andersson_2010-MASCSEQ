@@ -1,0 +1,315 @@
+---
+title: "EdgeR_template"
+author: "Bengt Sennblad"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+params:
+  # Change runDirectory to your preferred  output folder
+  runDirectory: '/Users/bengtsb/WABI/PROJECTS/A_Andersson_2010/FromVesna220221' # '~/Desktop/New_trim_ST_data/R_script_MASC-seq'),
+  adjust: "BH"
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(edgeR)
+library(dplyr)
+library(DT)
+opts_knit$set(root.dir=normalizePath(params$runDirectory), eval.after='fig.cap') # needed to get working dir right
+
+```
+# Intro on EdgeR
+
+*edgeR* is an Bioconductor R package performing DGEA of RNAseq data (or other similar data). It uses the raw read counts as input, modeling their distribution with a negative binomial distribution. This is argued to allow sharing of distributional information between genes in small- to medium-sized experiments, under certain assumptions, thereby improving differential expression estimates.
+The variation of the read counts can be thought of as comprising a *technical* component (measurement errors etc.) and a *biological* component. The *biological coefficient of variation* (BCV) is estimated from the data using an empirical Bayes approach, and is used as the *dispersion parameter* in the negative binomial distribution.
+A more detailed description of edgeR can be found in the [*edgeR* user's guide](https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf).
+
+*edgeR* also provides advanced statistical methods for DGEA. We will make use of the *generalized linear model* (GLM) class of methods implemented in *edgeR* to infer significantly differently expressed genes between the samples in the compared groups. These use a log-linear model for the mean of the gene-wise read counts for a sample as a function of its *class* (here, the membership in either of the compared sample groups). The counts are then modeled with a negative binomial distribution with this mean and a variance inferred from the BCV. 
+
+Roughly, this can be thought of as a regression model, where we transformed the outcome values and adjusted their variance (using the negative binomial) to make them respect the assumptions of the regression model.
+
+We adjust the obtained P-values for multiple testing using the Benjamini-Hochberg (R's `BH` method), which is also known as the *false discovery rate* (FDR) method; this method is, while still correctly adjusting for multiple tests, less conservative than the common Bonferroni method (i.e., it has larger power).
+
+_NB! This is an example template code demonstrating how one can to perform a DGEA on our st-data and not a meaningful analysis!_
+
+# Reading the data
+
+This is the code for reading the data. It mimics what is done in your R-script using a loop over the Tetrahymena data-sets. A minor difference is that I save the counts data in a list indexed by the selected data set names (this simplifies later comparisons). The st data sets to read in are defined in a named list, `data_sets` and an additional list, `subsets`, allows extraction of subsets (e.g., _small_ and _big_ cells; NULL indicate that all cells are read) from each dataset. I have also added a means to extract only subset of genes (columns) from the data; howverm this requires some familiarity with regular expressions (see, e.g., the R regex help: `? regex`).
+It is easy to extend the `data_sets` list to include more data sets and I would recommend to do that to have some reference to evaluate the three Tetrahymena datasets against.
+
+```{r data}
+# data sets indexed with a unique name (this name will be the compared "group" in edgeR)
+# NB! change paths to fit where your input files are!
+data_sets = list(
+  tet1 = "043_Tetra_C1_new_index_stdata.tsv",
+  tet2 = "043_Tetra_D2_new_index_stdata.tsv",
+  tet3 = "043_Tetra_E1_new_index_stdata.tsv"
+  #Phaeo = "path/to/phaeo_st_data.tsv."
+)
+
+# Define subsets/groups of spots in files in st-info format
+# index must match those of data_sets
+# NULL will indicate that all data are read
+subsets = list(
+  tet1 = list(big = "Big_cells_Tetra_C1.tsv", small = "Small_cells_Tetra_C1.tsv"),
+  tet2 = list(big = "Big_cells_Tetra_D2.tsv", small = "Small_cells_Tetra_D2.tsv"),
+  tet3 = list(big = "Big_cells_Tetra_E1.tsv", small = "Small_cells_Tetra_E1.tsv")
+  #Phaeo = NULL
+)
+
+# regular expression for valid column names. This example will macth columns containing a string 
+# starting with 'g', followed by one or several digits, ".t" and a single digit, e.g.,'g294885.t2'
+validColsRe = "g[[:digit:]]+\\.t[[:digit:]]" 
+
+# We store all data sets in a common list indexed by the data_sets names; 
+#this makes it easier to iterate/loop over
+counts = list()
+for(group in names(data_sets)){                                              # for each "group" 
+  tmp = as.matrix(read.delim(data_sets[[group]], row.names = 1))
+  valCols = grepl(validColsRe, colnames(tmp))
+  if(is.null(subsets[[group]])){
+    counts[[group]] = tmp[, valCols] # read the data and convert to matrix
+  }else{
+    for(sub in names(subsets[[group]])){
+      subgrp = read.delim(subsets[[group]][[sub]])
+      subgrp = paste(subgrp$x, subgrp$y, sep="x")
+      counts[[paste(group, sub, sep = "_")]] = tmp[row.names(tmp) %in% subgrp, valCols] # read the data and convert to matrix  
+    }
+  }
+}
+```
+
+# EdgeR analyses
+
+Because our data is not really optimal for analysis with edgeR, we try out two different approaches, w.r.t. how we treat the spots in the st results.
+
+First of all, we create a help function that concatenates datasets into a single matrix and then converts this to edgeR format. Only genes present in all data sets are used and sample names are prefixed with the group name to avoid name clashes. Note! raw count data (not normalized data) should be used -- normalization is done by edgeR.
+
+```{r Dge}
+# A function that creates merged indata for edgeR analysis from a 
+# named list of data sets (indexed by group names)
+# returns a DGElist  ready for use with edgeR
+# NB! Most often, this is done directly on the dataset, but since 
+# we will do use this code twice, I put it into a function.
+createDgeList <- function(dataList){
+  ## Part 1. combine data into a single matrix
+  # Identify common genes (columns) between named data sets in a list
+  commonGenes = NULL
+  for(dat in dataList){
+    if(is.null(commonGenes)){
+      commonGenes = colnames(dat)
+    }else{
+      commonGenes = commonGenes[commonGenes %in% colnames(dat)]
+    }    
+  }
+  # Create unique names for the replicates (spots or mergedSpots) 
+  # and map them to their respective group
+  target = do.call(rbind, 
+                   lapply(names(dataList), function(x) 
+                     data.frame(replicates = paste(x, rownames(dataList[[x]]), sep = "."), group = as.factor(x))
+                   )
+  )
+  row.names(target) = target$replicates
+  
+  # Merge the datasets, remove non-matching genes, and rename replicates
+  # with the unique names created above.
+  # Note that we need to transpose the matrix to fit expected edgeR indata
+  mergedData = t(do.call(rbind, 
+                         lapply(dataList, function(x)
+                           x[,commonGenes])
+                         )
+                 )
+  colnames(mergedData) = target$replicates
+
+  ## Part 2. Convert the matrix into an EdgeR object, a DGEList
+  # Create a DGEList object which will be used in edgeR
+  y <- DGEList(counts=mergedData, group=target$group, remove.zeros=T)
+  # Typically, we would filter out lowly expressed genes, but in the present case
+  # with very many counts, all genes will be removed with the default filter values
+  # Uncomment next two line to perform filtering
+  #keep = filterByExpr(y) 
+  #y <- y[keep, , keep.lib.sizes=FALSE]
+  # Normalize, without filtering this will tield warnings
+  y <- calcNormFactors(y) # TMM normalization
+  return(y)
+}
+```
+
+## Approach 1: keeping all spots separate
+
+In our first approach, we will treat each spot as a biological replicate. A problem is that the read counts might be very low, which is suboptimal for a proper Differential Gene Expression Analysis (DGEA). For our use-case, e.g., *"Does the three Tetrahymena replicates differ substantially?"*, it might or might possibly some information, but the low read counts will be a problem here as well; edgeR will surely issue a lot of warnings when trying to log-transform count values that are zero. It will not be a publishable analysis, I believe.
+
+### Convert to edgeR format and setup for DGEA
+
+We first concatenate and convert the loaded data sets into a a single matrix in edgeR format, including all the different groups. EdgeR then uses an Empirical Bayes approach to estimate the dispersion function of the Negative Binomial distribution, assumed to underlying the residual variation, and plot the obtained dispersion distribution.
+(*Tech detail: the dispersion is modeled to correspond to the square root of the biological coefficient of variation, (BCV).*) 
+
+The observed BCV distribution as a function of the mean $log_2 CPM$ (counts per million sequenced reads) is plotted.
+
+_NB!_ In a typical DGEA, we would here do some PCA or MDS analysis to visualize whether the replicates groups in a way that is reasonable to our assumptions, e.g., the groups, etc. Since, in Approach 1, we have set all spots as replicates, such a plot would be very messy. Hence, we have omitted it. Example code for doing a MDS analysis is shown under Approach 2, below.
+
+```{r edgeRreplicates, fig.cap="Plot of the estimated bcv as a function of the mean log CPM. The trend BCV distribution is the one used to fit the model dispersion distribution."}
+# Create a DGElist of all spots in the three datasets using the function defined above
+dgeData = createDgeList(counts)
+# estimate dispersion distribution
+dgeData <- estimateDisp(dgeData)
+# plot it
+plotBCV(dgeData, cex=0.8)
+
+```
+
+We estimate the common dispersion of the negative binomial distribution in the model to `r format(dgeData$common.dispersion, digits=2, scientific=-3)`, corresponding to a BCV = `r sqrt(dgeData$common.dispersion)`.
+
+### DGEA
+
+Next we perform a DGEA. As an example, we will do all pairwise comparisons between the groups we have designed, so we first create a list with all pairwise combinations between the groups. We use edgeR's exactTest and print the result as a scrollable datatable, sorted firstly by in ascending adjusted P-value and secondly by descending logFC
+
+```{r meanDge, results="asis"}
+# Create a list of all possible pairwise comparisons among datasets
+# each comparison
+comparisons = combn(names(counts), 2, simplify=FALSE) 
+
+# To display several datatables generated in a loop (lapply), we must, I discovered, enclose the code in a 'taglist'.
+htmltools::tagList(
+  lapply(comparisons, 
+         function(cmp){
+           # This is the actual call to edgeR
+           meanDge <- exactTest(dgeData, pair=cmp)
+           
+           # Adjust the P-values for multiple testing
+           meanDge$table$p.adjust = p.adjust(meanDge$table$PValue,
+                                             method=params$adjust)
+           # You may limit table to only significant hits by uncommenting of next line
+           #meanDge$table = meanDge$table[meanDge$table$p.adjust<=0.05,]
+           # We order the genes first by their adjusted P-values and second
+           # by their log fold change and put them in a datatable...
+           meanDge$table[order(meanDge$table$p.adjust, -abs(meanDge$table$logFC)),] %>%
+             datatable(rownames = TRUE,
+                       extensions = c('AutoFill', 'FixedColumns'),
+                       options = list(scrollX = TRUE,
+                                      autoFill = TRUE,
+                                      fixedColumns = list(leftColumns=1)),
+                       caption = paste(cmp, collapse = " vs ")
+             ) %>%
+             formatSignif(columns=c("logFC", "logCPM", 
+                                    "PValue","p.adjust"), digits=3)
+           # and/or write to file if needed -- if so, uncomment next line (and change to a apoporopriate file name)
+           #write.table(meanDge$table, file=<your preferrred file name>, col.names=TRUE, row.names=FALSE)
+         })
+)
+```
+
+## Approach 2: Convert to edgeR format and setup for DGEA - merging spots 
+
+As an alternative, we can merge gene counts over all spots and use this as an input. This means that we will not have any replicates, which is discouraged for DGEA in the edgR documentation, as estimation of the dispersion function from data will not work.
+
+However, for demonstration purposes, we can say tha our aim is to compare `bifg` and `small` cells and then use `tet1`, `tet2`, and `tet3` as biological replicates.
+
+### Merge over spots and convert data to edgeR format
+
+We define a function for merging gene read counts over spots in a dataset and use this and the previosly defined function to to create a mergedData set of all groups in edgeR format.
+
+```{r mergedDGE, echo=TRUE}
+# create a named list of merged datasets
+mergedCounts = lapply(names(counts), function(x)
+  matrix(colSums(counts[[x]]),nrow=1,
+         dimnames = list(x, colnames(counts[[x]])))
+  )
+names(mergedCounts) = names(counts)
+
+# Create a DGElist of all spots in the threee datasets
+dgeMergedData = createDgeList(mergedCounts)
+
+```
+
+### Perform the MDS analysis
+
+As mentioned above, it is good pracxtice to perform apply multivariate dimension-reduction methods, such as PCA or MDS, to visualize whether similarities and differences among the groups seems reasonable (here, it would be beneficial to include some additional non-Tetrahymena groups as a reference!). We can use edgeR's function to create MDS plots. *(NB! this function is also very useful to apply as a first step in any standard edgeR analysis to investigate how replicates group with respect to their groups; however, the high number of replicates (spots) in our data made it unfeasible above.)
+
+Looking at the results, it could possibly seem that the first component separates `tet3` from `te1` and `tet2`. The second component mainly separates `tet3_small` from `tet3_big`, while the third mainly separates `tet1_small` from `tet1_big`. However, it is difficult to interpret how substantial this difference is. It could be good to include, e.g., _Phaeodactylum_, to get some 'scale' for how different the different _Tetrahymena_ strains are.
+
+```{r mds, fig.height=6, fig.cap=paste("MDS plots of the investigated replicates for the three first MDS components. Coloring of points are according to  group (border) and sample (fill).")}
+
+# layout used to get the legend centered
+layout(matrix(c(1,2,1,2,1,2,3,3), ncol = 2, byrow = TRUE))
+
+# Make sample-indexed color vectors for coloring the MDS plot  (if more than 8 groups, you need to add more colors)
+# We make a vector of colors an then extract just a number corresponding to number of replicates 
+bgcols = c("red", "blue", "green", "black", "orange", "grey","purple","yellow")[1:ncol(dgeMergedData)]
+# This connects each replicate with a color
+names(bgcols) = levels(dgeMergedData$samples$group)
+
+# Create MDS plots
+plotMDS(dgeMergedData, dim.plot=c(1,2), asp=2, 
+        bg= bgcols, 
+        pch=21, cex=3)
+plotMDS(dgeMergedData, dim.plot=c(1,3), asp=2, 
+         bg= bgcols, 
+         pch=21, cex=3)
+plot.new()
+
+legend("top", 
+       legend = names(bgcols),
+       fill=bgcols, 
+       text.col=bgcols,
+       cex=0.9, ncol=4)
+
+```
+### DGEA
+
+Let's do a DGEA also on the merged data and let's do this DGEA  to compare all _small_ cell spots and all _big_ cell spots. We manually redefine the assigned groups in the DGEList to belong to either the new 'small' and 'big' groups. 
+As above, we then estimate the dispersion distribution and plot it. (The plot shows a suspiciously good fit of the `trend` line -- it might well be that it is over-fitted.)
+
+```{r edgeRmerged, results="asis", echo=TRUE}
+# Dedfine how the original groups should be arranged in the new groups 'small' an d'big'
+small = c("tet1_small", "tet2_small", "tet3_small")
+big = c("tet1_big", "tet2_big", "tet3_big")
+# Create a vector that assigns each replicate into the new groups - by checking if, for each replicate 
+# in order, if its current group belong to a 'big' or 'small'; 
+# the current goups is stored in dgeMergedData$samples$group
+newGroups = sapply(dgeMergedData$samples$group, function(x) ifelse(x %in% small, "small", ifelse(x %in% big, "big", "other")))
+
+# Redefine the current groups 
+dgeMergedData$samples$group = newGroups
+# estimate dispersion distribution
+dgeMergedData <- estimateDisp(dgeMergedData)
+# plot it
+plotBCV(dgeMergedData, cex=0.8)
+```
+
+Next we perform a DGEA between the new 'small' and the 'big' groups. Again,we use edgeR's exactTest and print the result as a scrollable datatable, sorted firstly by in ascending adjusted P-value and secondly by descending logFC.
+
+(_NB!_ EdgeR has an alternative approach for DGEA using Generalized Linear Models (GLM) for more complex comparisons using so-called _contrasts_. We could have used contrasts as an alternative to the redefinition of groups and edgeR's exactTest, but I wanted to avoid introducing new methods in this template; see further the [*edgeR* user's guide](https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf) for more info on the GLM and contrasts methods.)
+
+```{r mergedDge, results="asis", echo=TRUE}
+# User-defined comparisons based on the new groups
+comparisons = list(
+  c("small", "big")
+)
+# display several datatables generated in a loop (lapply), we must, apparently, enclose it in a 'taglist'.
+htmltools::tagList(
+  lapply(comparisons, 
+         function(cmp){
+           meanDgeMerged <- exactTest(dgeMergedData, pair=cmp)
+           # Adjust the P-values for multiple testing
+           meanDgeMerged$table$p.adjust = p.adjust(meanDgeMerged$table$PValue,
+                                                   method=params$adjust)
+           # You may limit table to only significant hits by uncommenting of next line
+           #topGenes = meanDge$table[meanDge$table$p.adjust<=0.05,]
+           # and replace meanDge$table by topGenes below
+           # We order the genes first by their adjusted P-values and second
+           # by their log fold change and put them in a datatable...
+            meanDgeMerged$table[order(meanDgeMerged$table$p.adjust, -abs(meanDgeMerged$table$logFC)),] %>%
+             datatable(rownames = TRUE,
+                       extensions = c('AutoFill', 'FixedColumns'),
+                       options = list(scrollX = TRUE,
+                                      autoFill = TRUE,
+                                      fixedColumns = list(leftColumns=1)),
+                       caption = paste(cmp, collapse = " vs ")
+             ) %>%
+             formatSignif(columns=c("logFC", "logCPM", 
+                                    "PValue","p.adjust"), digits=3)
+           # and/or write to file if needed -- if so, uncomment next line (and change to a apoporopriate file name)
+           #write.table(meanDge$table, file=<your preferrred file name>, col.names=TRUE, row.names=FALSE)
+         })
+)
+```
