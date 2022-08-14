@@ -647,7 +647,7 @@ rule star_index_genome:
     conda:
         "envs/star.yml"
     resources:
-        runtime=lambda wildcards, attempt: attempt ** 2 * 60 
+        runtime=lambda wildcards, attempt: attempt ** 2 * 600
     threads: 1
     shell:
         """
@@ -905,12 +905,12 @@ rule checkStrandness:
     and squencing.
     """
     input:
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByName.out.bam",
         bed = "resources/{reftype}/{ref}.bed"
     output:
-        txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.inferExperiment.txt"
+        txt = "results/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.{mm}.inferExperiment.txt"
     log:
-        "results/logs/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.inferExperiment.log"
+        "results/logs/{reftype}/star/{ref}/rseqc/{sample}.{RNA}.{mm}.inferExperiment.log"
     conda: "envs/rseqc.yml"
     shell:
         """
@@ -930,12 +930,12 @@ rule readCountGenome:
     Requires a gtf file and thus compatible with a _genome_ reference.
     """
     input:
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByName.out.bam",
         gtf = "resources/{reftype}/{ref}.gtf"
     output:
-        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.{feature,genes|transcripts}.abundance.tsv",
+        counts = "results/{reftype, genome.*}/star/{ref}/{sample}.{RNA}.{mm}.{feature,genes|transcripts}.abundance.tsv",
     log:
-        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{feature,genes|transcripts}.readCountGenome.log"
+        "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.{feature,genes|transcripts}.readCountGenome.log"
     params:
         order = "name", 
         strandedness = lambda wc: "yes" if samples[wc.sample]["strandness"] == "sense" \
@@ -946,7 +946,7 @@ rule readCountGenome:
         sumOnFeature = lambda wc: "gene_id" if wc. feature == "genes" else "transcript_id",
         htseqMode = "intersection-nonempty",
         htseqAmbiguous = "none",
-        multiMappers = "ignore"
+        multiMappers = lambda wc: "ignore" if wc.mm == "excludeMultiMap" else "score"
     threads: 1
     resources:
         runtime = lambda wildcards, attempt: attempt ** 2 * 240
@@ -990,14 +990,14 @@ rule readCountTranscriptome:
     Requires Use this for a _transcriptome_ reference.
     """
     input:
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.Aligned.sortedByName.out.bam",
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByName.out.bam",,
     output:
-        counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.{feature,genes|transcripts}.abundance.tsv"
+        counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.{mm}.{feature,genes|transcripts}.abundance.tsv"
     log:
-        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{feature}.readCountTranscriptome.log"
+        log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.{feature}.readCountTranscriptome.log"
     params:
         minMapq = 0,
-        multimappers = "ignore",
+        multimappers = lambda wc: "ignore" if wc.mm == "excludeMultiMap" else "score",
         feature = "{feature}"
     conda:
         "envs/pysam.yml"
@@ -1006,9 +1006,6 @@ rule readCountTranscriptome:
     conda:
         "envs/pysam.yml"
     script: "src/manualReadCount.py"
-
-
-
 
 #######################################
 # Compare st- and BulkRNAseq-abundance
@@ -1073,11 +1070,11 @@ rule stVsBulkComparisonTranscriptome:
 
 rule stVsBulkComparisonGenome:
     input:
-        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.genes.stAndBulkAbundance.tsv"
+        genesFile = "results/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.genes.stAndBulkAbundance.tsv"
     output:
-        html = "reports/{refType, genome.*}/star/{ref}/comparisons/{sample}.{RNA}.stAndBulkAbundanceCorrelationReport.html"
+        html = "reports/{refType, genome.*}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.stAndBulkAbundanceCorrelationReport.html"
     log:
-        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.stVsBulkComparison.log"
+        log = "results/log/{refType}/star/{ref}/comparisons/{sample}.{RNA}.{mm}.stVsBulkComparison.log"
     conda: "envs/rmarkdown.yml"
     params:
         script = "src/stVsBulkComparison.Rmd",
