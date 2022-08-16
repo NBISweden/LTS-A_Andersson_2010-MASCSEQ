@@ -748,9 +748,9 @@ rule star_map:
         outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}.",
         index = "resources/{reftype,genome.*}/star/{ref}.idx",
         multimap = lambda wc: 1 if wc.mm == "excludeMultiMap" else 20
-    threads: 8
+    threads: 10
     resources:
-        runtime = lambda wildcards, attempt: attempt ** 2 * 360
+        runtime = lambda wildcards, attempt: attempt ** 2 * (60 * 72)
     conda:
         "envs/star.yml"
     shell:
@@ -997,7 +997,7 @@ rule readCountTranscriptome:
     Requires Use this for a _transcriptome_ reference.
     """
     input:
-        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByName.out.bam",,
+        bam = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm, includeMultiMap|excludeMultiMap}.Aligned.sortedByName.out.bam"
     output:
         counts = "results/{reftype, transcriptome.*}/star/{ref}/{sample}.{RNA}.{mm}.{feature,genes|transcripts}.abundance.tsv"
     log:
