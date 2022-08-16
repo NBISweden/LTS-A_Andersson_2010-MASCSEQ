@@ -738,7 +738,7 @@ rule star_map:
     log:
         log = "results/logs/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.star_map.log"
     params:
-        outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}.",
+        outprefix = "results/{reftype}/star/{ref}/{sample}.{RNA}.{mm}.",
         index = "resources/{reftype,genome.*}/star/{ref}.idx",
         multimap = lambda wc: 1 if wc.mm == "excludeMultiMap" else 20
     threads: 8
